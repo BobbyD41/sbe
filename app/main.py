@@ -39,6 +39,11 @@ class MatchRequest(BaseModel):
     scores: Dict[str, float]
     top_k: int = 5
 
+class ReRankPayload(BaseModel):
+    year: int | str
+    team: str
+    players: List[Dict[str, Any]]
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze_player(req: AnalyzeRequest):
     texts = collect_public_text(req.player_name, req.high_school, req.links or [], req.max_items)
@@ -70,6 +75,29 @@ async def rerank_class(year: int, team: str):
     if not summary.get("players"):
         raise HTTPException(status_code=404, detail="Class not found")
     return summary
+
+@app.post("/api/rerank")
+async def save_rerank_class(payload: ReRankPayload):
+    try:
+        year = int(payload.year)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid year")
+    team_slug = payload.team.strip().lower().replace(" ", "_")
+    data_dir = os.path.join(os.path.dirname(__file__), "data", "rerank")
+    os.makedirs(data_dir, exist_ok=True)
+    path = os.path.join(data_dir, f"{year}_{team_slug}.json")
+    # Sanitize and coerce
+    players = []
+    for p in payload.players:
+        name = str(p.get("name", "")).strip()
+        if not name:
+            continue
+        points = int(p.get("points", 0))
+        note = str(p.get("note", "")).strip()
+        players.append({"name": name, "points": points, "note": note})
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(players, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "saved": len(players), "file": f"{year}_{team_slug}.json"}
 
 # Static dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "static")

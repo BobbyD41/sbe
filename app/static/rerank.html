@@ -5,15 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ReRank – Stars to Stats</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1000px; }
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1100px; }
     nav a { margin-right: 1rem; }
     .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #e5e5e5; padding: 8px; text-align: left; }
-    th { background: #fafafa; }
+    th { background: #fafafa; cursor: pointer; }
     thead th { position: sticky; top: 0; }
     .muted { color: #666; }
+    .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .row > * { margin: 0.25rem 0; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <h1>Stars to Stats – ReRank</h1>
@@ -39,14 +42,35 @@
   </div>
 
   <div class="card">
-    <label>Year <input id="year" value="2002" style="margin-left:8px;" /></label>
-    <label>Team <input id="team" value="Oklahoma State" style="margin-left:8px;"/></label>
-    <button id="load">Load Class</button>
+    <div class="row">
+      <label>Year <input id="year" value="2002" /></label>
+      <label>Team <input id="team" value="Oklahoma State"/></label>
+      <button id="load">Load Class</button>
+      <label>Filter min points <input id="minPoints" type="number" value="0" min="0" max="8" style="width:80px;"/></label>
+      <button id="applyFilter">Apply Filter</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="csvFile" type="file" accept=".csv" />
+      <button id="previewCsv">Preview CSV</button>
+      <button id="saveCsv">Save to Dataset</button>
+      <span class="muted">CSV columns: name,points,note</span>
+    </div>
   </div>
 
   <div id="summary" class="card" style="display:none;"></div>
 
+  <div class="card">
+    <h3>Points Distribution</h3>
+    <canvas id="bar" height="160"></canvas>
+  </div>
+
   <script>
+    let currentSummary = null;
+    let barChart;
+
     function renderTable(summary) {
       const rows = (summary.players || []).map(p => `
         <tr>
@@ -61,16 +85,59 @@
         <table>
           <thead>
             <tr>
-              <th>Player</th>
-              <th>Points</th>
+              <th data-sort="name">Player</th>
+              <th data-sort="points">Points</th>
               <th>Highest Level Reached Note</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="tbody">
             ${rows}
           </tbody>
         </table>
       `;
+    }
+
+    function applyFilter() {
+      if (!currentSummary) return;
+      const minPoints = Number(document.getElementById('minPoints').value || 0);
+      const filtered = { ...currentSummary, players: currentSummary.players.filter(p => Number(p.points) >= minPoints) };
+      const el = document.getElementById('summary');
+      el.innerHTML = renderTable(filtered);
+      wireSorting(filtered);
+      renderBar(filtered);
+    }
+
+    function wireSorting(summary) {
+      const ths = document.querySelectorAll('th[data-sort]');
+      ths.forEach(th => {
+        th.onclick = () => {
+          const key = th.getAttribute('data-sort');
+          const asc = th.getAttribute('data-asc') === 'true' ? false : true;
+          th.setAttribute('data-asc', asc);
+          const sorted = [...summary.players].sort((a,b) => {
+            if (key === 'points') return asc ? a.points - b.points : b.points - a.points;
+            return asc ? String(a[key]).localeCompare(String(b[key])) : String(b[key]).localeCompare(String(a[key]));
+          });
+          const el = document.getElementById('summary');
+          el.innerHTML = renderTable({ ...summary, players: sorted });
+          wireSorting({ ...summary, players: sorted });
+        }
+      });
+    }
+
+    function renderBar(summary) {
+      const counts = Array(9).fill(0);
+      (summary.players || []).forEach(p => { const v = Number(p.points)||0; if (v>=0 && v<=8) counts[v]++; });
+      const ctx = document.getElementById('bar').getContext('2d');
+      if (barChart) barChart.destroy();
+      barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['0','1','2','3','4','5','6','7','8'],
+          datasets: [{ label: 'Count', data: counts, backgroundColor: 'rgba(255, 159, 64, 0.5)'}]
+        },
+        options: { scales: { y: { beginAtZero: true, precision: 0 } }, plugins: { legend: { display: false } } }
+      });
     }
 
     async function load() {
@@ -82,10 +149,52 @@
       const res = await fetch(`/api/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`);
       if (!res.ok) { el.innerHTML = 'Class not found'; return; }
       const data = await res.json();
+      currentSummary = data;
       el.innerHTML = renderTable(data);
+      wireSorting(data);
+      renderBar(data);
+    }
+
+    function parseCsv(text) {
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const header = lines[0].split(',').map(s => s.trim().toLowerCase());
+      const rows = lines.slice(1).map(line => {
+        const cols = line.split(',');
+        const obj = {};
+        header.forEach((h,i) => obj[h] = cols[i] ? cols[i].trim() : '');
+        obj.points = Number(obj.points || 0);
+        return obj;
+      });
+      return rows.map(r => ({ name: r.name, points: r.points, note: r.note }));
+    }
+
+    async function previewCsv() {
+      const input = document.getElementById('csvFile');
+      if (!input.files || !input.files[0]) { alert('Choose a CSV file first.'); return; }
+      const text = await input.files[0].text();
+      const players = parseCsv(text);
+      const year = document.getElementById('year').value.trim();
+      const team = document.getElementById('team').value.trim();
+      currentSummary = { year, team, players, total_points: players.reduce((s,p)=>s+(p.points||0),0), avg_points: 0 };
+      const el = document.getElementById('summary');
+      el.style.display = 'block';
+      el.innerHTML = renderTable(currentSummary);
+      wireSorting(currentSummary);
+      renderBar(currentSummary);
+    }
+
+    async function saveCsv() {
+      if (!currentSummary) { alert('Nothing to save. Load or preview first.'); return; }
+      const res = await fetch('/api/rerank', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(currentSummary) });
+      if (!res.ok) { alert('Save failed'); return; }
+      alert('Saved');
     }
 
     document.getElementById('load').addEventListener('click', load);
+    document.getElementById('applyFilter').addEventListener('click', applyFilter);
+    document.getElementById('previewCsv').addEventListener('click', previewCsv);
+    document.getElementById('saveCsv').addEventListener('click', saveCsv);
+
     // Auto-load default example
     load();
   </script>
