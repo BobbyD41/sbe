@@ -16,6 +16,7 @@
     .muted { color: #666; }
     nav a { margin-right: 1rem; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <h1>College Football Vibe Monitor (MVP)</h1>
@@ -42,6 +43,39 @@
   <div id="result" class="card" style="display:none;"></div>
 
   <script>
+    let radarChart;
+    function renderRadar(scores) {
+      const labels = ['Coachability','Leadership','Ego','Team Fit'];
+      const data = labels.map(k => Number(scores?.[k] ?? 0));
+      let canvas = document.getElementById('radar');
+      if (!canvas) {
+        const res = document.getElementById('result');
+        const wrap = document.createElement('div');
+        wrap.innerHTML = '<h3>Scores Radar</h3><canvas id="radar" height="220"></canvas>';
+        res.appendChild(wrap);
+        canvas = wrap.querySelector('#radar');
+      }
+      const ctx = canvas.getContext('2d');
+      if (radarChart) radarChart.destroy();
+      radarChart = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Player Scores',
+            data,
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgb(54, 162, 235)',
+            pointBackgroundColor: 'rgb(54, 162, 235)'
+          }]
+        },
+        options: {
+          scales: { r: { suggestedMin: 0, suggestedMax: 100 } },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
     async function analyze() {
       const player = document.getElementById('player').value.trim();
       const hs = document.getElementById('hs').value.trim();
@@ -90,6 +124,7 @@
           </div>
         </div>
       `;
+      renderRadar(data.scores || {});
     }
 
     document.getElementById('analyze').addEventListener('click', analyze);
