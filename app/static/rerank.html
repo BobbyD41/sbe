@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReRank – Stars to Stats</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1000px; }
+    nav a { margin-right: 1rem; }
+    .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #e5e5e5; padding: 8px; text-align: left; }
+    th { background: #fafafa; }
+    thead th { position: sticky; top: 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Stars to Stats – ReRank</h1>
+  <nav>
+    <a href="/">Analyze</a>
+    <a href="/static/programs.html">Programs</a>
+    <a href="/static/rerank.html">ReRank</a>
+  </nav>
+
+  <div class="card">
+    <p>Revamping College Recruiting Rankings. ReRank reassesses past recruiting classes using a transparent point system to show how classes actually performed.</p>
+    <ul>
+      <li>Left Team/Little Contribution/Bust – 0</li>
+      <li>4 Year Contributor – 1</li>
+      <li>College Starter – 2</li>
+      <li>All Conference – 3</li>
+      <li>All American – 4</li>
+      <li>Undrafted but made NFL Roster – 5</li>
+      <li>NFL Drafted – 6</li>
+      <li>NFL Starter – 7</li>
+      <li>NFL Pro Bowl – 8</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <label>Year <input id="year" value="2002" style="margin-left:8px;" /></label>
+    <label>Team <input id="team" value="Oklahoma State" style="margin-left:8px;"/></label>
+    <button id="load">Load Class</button>
+  </div>
+
+  <div id="summary" class="card" style="display:none;"></div>
+
+  <script>
+    function renderTable(summary) {
+      const rows = (summary.players || []).map(p => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${p.points}</td>
+          <td>${p.note || ''}</td>
+        </tr>
+      `).join('');
+      return `
+        <h3>🏈 ${summary.year} ${summary.team} Recruiting Class – Final Rankings</h3>
+        <div class="muted">Total Points: ${summary.total_points} • Average: ${summary.avg_points}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Points</th>
+              <th>Highest Level Reached Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function load() {
+      const year = document.getElementById('year').value.trim();
+      const team = document.getElementById('team').value.trim();
+      const el = document.getElementById('summary');
+      el.style.display = 'block';
+      el.innerHTML = '<em>Loading…</em>';
+      const res = await fetch(`/api/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`);
+      if (!res.ok) { el.innerHTML = 'Class not found'; return; }
+      const data = await res.json();
+      el.innerHTML = renderTable(data);
+    }
+
+    document.getElementById('load').addEventListener('click', load);
+    // Auto-load default example
+    load();
+  </script>
+</body>
+</html>
