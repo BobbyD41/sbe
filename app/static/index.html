@@ -14,10 +14,16 @@
     pre { background: #f7f7f8; padding: 1rem; border-radius: 8px; overflow: auto; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
     .muted { color: #666; }
+    nav a { margin-right: 1rem; }
   </style>
 </head>
 <body>
   <h1>College Football Vibe Monitor (MVP)</h1>
+  <nav>
+    <a href="/">Analyze</a>
+    <a href="/static/programs.html">Programs</a>
+    <a href="/static/rerank.html">ReRank</a>
+  </nav>
   <p class="muted">Analyze public signals to estimate coachability, leadership, ego, and team fit.</p>
 
   <div class="card">
@@ -62,6 +68,11 @@
       const data = await res.json();
       const scores = Object.entries(data.scores || {}).map(([k,v]) => `<div><strong>${k}:</strong> ${v}</div>`).join('');
 
+      // Fetch program matches
+      const matchRes = await fetch('/api/match', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ scores: data.scores, top_k: 6 }) });
+      const matchData = matchRes.ok ? await matchRes.json() : { fits: [] };
+      const fits = (matchData.fits || []).map(f => `<div>${f.program}: <strong>${f.fit}%</strong></div>`).join('');
+
       el.style.display = 'block';
       el.innerHTML = `
         <h3>Summary</h3>
@@ -70,6 +81,8 @@
           <div>
             <h3>Scores</h3>
             ${scores || '<em class="muted">No scores</em>'}
+            <h3 style="margin-top:1rem;">Best Program Fits</h3>
+            ${fits || '<em class="muted">No matches</em>'}
           </div>
           <div>
             <h3>Signals</h3>
