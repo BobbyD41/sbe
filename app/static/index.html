@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>College Football Vibe Monitor (MVP)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+    h1 { margin-bottom: 0.5rem; }
+    .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+    label { display:block; font-weight: 600; margin-top: 0.5rem; }
+    input, textarea { width: 100%; padding: 8px; margin-top: 0.25rem; }
+    button { margin-top: 0.75rem; padding: 10px 16px; font-weight: 600; }
+    pre { background: #f7f7f8; padding: 1rem; border-radius: 8px; overflow: auto; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>College Football Vibe Monitor (MVP)</h1>
+  <p class="muted">Analyze public signals to estimate coachability, leadership, ego, and team fit.</p>
+
+  <div class="card">
+    <label for="player">Player Name</label>
+    <input id="player" placeholder="e.g., Nathan Porter" />
+
+    <label for="hs">High School</label>
+    <input id="hs" placeholder="e.g., Example High School" />
+
+    <label for="links">Links (optional, one per line)</label>
+    <textarea id="links" rows="4" placeholder="https://example.com/article\nhttps://youtube.com/... "></textarea>
+
+    <button id="analyze">Analyze</button>
+  </div>
+
+  <div id="result" class="card" style="display:none;"></div>
+
+  <script>
+    async function analyze() {
+      const player = document.getElementById('player').value.trim();
+      const hs = document.getElementById('hs').value.trim();
+      const linksRaw = document.getElementById('links').value.trim();
+      const links = linksRaw ? linksRaw.split(/\n+/).map(s => s.trim()).filter(Boolean) : [];
+
+      if (!player) { alert('Please enter a player name.'); return; }
+
+      const payload = { player_name: player, high_school: hs || null, links, max_items: 25 };
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const el = document.getElementById('result');
+      if (!res.ok) {
+        const txt = await res.text();
+        el.style.display = 'block';
+        el.innerHTML = `<strong>Error:</strong> ${res.status} ${txt}`;
+        return;
+      }
+
+      const data = await res.json();
+      const scores = Object.entries(data.scores || {}).map(([k,v]) => `<div><strong>${k}:</strong> ${v}</div>`).join('');
+
+      el.style.display = 'block';
+      el.innerHTML = `
+        <h3>Summary</h3>
+        <p>${data.summary}</p>
+        <div class="grid">
+          <div>
+            <h3>Scores</h3>
+            ${scores || '<em class="muted">No scores</em>'}
+          </div>
+          <div>
+            <h3>Signals</h3>
+            <pre>${JSON.stringify(data.signals, null, 2)}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById('analyze').addEventListener('click', analyze);
+  </script>
+</body>
+</html>
