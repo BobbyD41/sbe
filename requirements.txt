@@ -5,3 +5,6 @@ requests==2.32.3
 beautifulsoup4==4.12.3
 textblob==0.18.0.post0
 aiofiles==23.2.1
+SQLAlchemy==2.0.34
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
