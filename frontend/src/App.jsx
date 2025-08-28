@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const OUTCOMES = [
+  'Bust','4 Year Contributor','College Starter','All Conference','All American',
+  'Undrafted NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
+]
 
 function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
@@ -16,6 +20,7 @@ function Nav() {
       <a href="#/analyze">Analyze</a>
       <a href="#/programs">Programs</a>
       <a href="#/rerank">ReRank</a>
+      <a href="#/admin">Admin</a>
       <a href="#/auth">Auth</a>
     </nav>
   )
@@ -94,14 +99,48 @@ function RerankPage({ auth }) {
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [summary, setSummary] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [recruits, setRecruits] = useState([])
+  const [meta, setMeta] = useState(null)
+
   async function load() {
     const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setSummary(res.ok ? await res.json() : null)
+    const rr = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
+    setRecruits(rr.ok ? await rr.json() : [])
+    const cm = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+    setMeta(cm.ok ? await cm.json() : null)
   }
-  async function saveDemo() {
-    const res = await fetch(`${API_BASE}/rerank`, { method: 'POST', headers: { 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, players:[{ name:'Demo', points:3, note:'All Conference'}] }) })
-    alert(res.ok ? 'Saved' : 'Save failed')
+  async function find() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/find?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      await load()
+      alert('Imported class (teams+players) & recalculated')
+    } finally { setBusy(false) }
   }
+
+  function setOutcome(id, outcome) {
+    setRecruits(recruits.map(r => r.id === id ? { ...r, outcome } : r))
+  }
+  async function saveOutcomes() {
+    const updates = recruits.filter(r => OUTCOMES.includes(r.outcome || '')).map(r => ({ id: r.id, outcome: r.outcome }))
+    if (!updates.length) { alert('No changes'); return }
+    const res = await fetch(`${API_BASE}/recruits/outcomes`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ year: Number(year), team, updates }) })
+    if (!res.ok) { alert('Save failed'); return }
+    alert('Outcomes saved')
+    await load()
+  }
+  async function rerankFromOutcomes() {
+    const res = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+    if (!res.ok) { alert('Recalc failed'); return }
+    await load()
+    alert('ReRank snapshot created')
+  }
+
+  useEffect(() => { load() }, [])
+
   return (
     <div className="card">
       <h2>ReRank</h2>
@@ -109,10 +148,58 @@ function RerankPage({ auth }) {
         <input value={year} onChange={e=>setYear(e.target.value)} />
         <input value={team} onChange={e=>setTeam(e.target.value)} />
         <button onClick={load}>Load</button>
-        <button onClick={saveDemo}>Save Demo</button>
+        <button onClick={find} disabled={busy}>Find</button>
       </div>
+
+      {meta && (
+        <div className="card" style={{ marginTop:12 }}>
+          <h3>Original Class (CFBD)</h3>
+          <div>National Rank: <strong>{meta.national_rank}</strong></div>
+          <div>Points: <strong>{meta.points}</strong></div>
+          <div>Avg Rating: <strong>{meta.avg_rating}</strong></div>
+          <div>Avg Stars: <strong>{meta.avg_stars}</strong></div>
+          <div>Commits: <strong>{meta.commits}</strong></div>
+        </div>
+      )}
+
+      <div style={{ marginTop:12 }}>
+        <h3>Original Recruits (edit outcomes, then Save & ReRank)</h3>
+        <div>
+          {recruits.length ? (
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th>#</th><th>Name</th><th>Pos</th><th>Stars</th><th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recruits.map(r => (
+                  <tr key={r.id}>
+                    <td>{r.rank}</td>
+                    <td>{r.name}</td>
+                    <td>{r.position}</td>
+                    <td>{r.stars}</td>
+                    <td>
+                      <select value={r.outcome || ''} onChange={e=>setOutcome(r.id, e.target.value)}>
+                        <option value=''>Select outcome…</option>
+                        {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <em>No recruits loaded</em>}
+        </div>
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={saveOutcomes}>Save Outcomes</button>
+          <button onClick={rerankFromOutcomes}>ReRank From Outcomes</button>
+        </div>
+      </div>
+
       {summary && (
         <div style={{ marginTop:12 }}>
+          <h3>🏈 {summary.year} {summary.team} Recruiting Class – Final Rankings</h3>
           <div><strong>Total:</strong> {summary.total_points} • <strong>Avg:</strong> {summary.avg_points}</div>
           <ul>
             {(summary.players||[]).map(p => <li key={p.name}>{p.name} – {p.points} – {p.note}</li>)}
@@ -123,10 +210,88 @@ function RerankPage({ auth }) {
   )
 }
 
+function AdminPage({ auth }) {
+  const [year, setYear] = useState('2002')
+  const [team, setTeam] = useState('Oklahoma State')
+  const [recruits, setRecruits] = useState([])
+  const [csvText, setCsvText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function load() {
+    const res = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
+    setRecruits(res.ok ? await res.json() : [])
+  }
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    const header = lines[0].split(',').map(s=>s.trim().toLowerCase())
+    return lines.slice(1).map(line => {
+      const cols = line.split(',')
+      const o = {}
+      header.forEach((h,i) => o[h] = (cols[i]||'').trim())
+      o.stars = Number(o.stars||0); o.rank = Number(o.rank||0); o.points = Number(o.points||0)
+      return o
+    })
+  }
+  async function uploadCsv() {
+    setBusy(true)
+    try {
+      const recruits = parseCsv(csvText)
+      const res = await fetch(`${API_BASE}/recruits/upload`, { method:'POST', headers:{ 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, recruits }) })
+      if (!res.ok) throw new Error('upload failed')
+      await load()
+      alert('Uploaded')
+    } finally { setBusy(false) }
+  }
+  async function importCfbd() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/import/cfbd/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      await load()
+      alert('Imported from CFBD')
+    } finally { setBusy(false) }
+  }
+  async function recalc() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) throw new Error('recalc failed')
+      alert('ReRank snapshot created')
+    } finally { setBusy(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  return (
+    <div className="card">
+      <h2>Admin – Manage Recruits</h2>
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={year} onChange={e=>setYear(e.target.value)} />
+        <input value={team} onChange={e=>setTeam(e.target.value)} />
+        <button onClick={load}>Load</button>
+        <button onClick={importCfbd} disabled={busy}>Import CFBD</button>
+        <button onClick={recalc} disabled={busy}>Recalc Class</button>
+      </div>
+      <div style={{ marginTop:12 }}>
+        <textarea rows={6} style={{ width:'100%' }} placeholder="CSV: name,position,stars,rank,outcome,points,note,source" value={csvText} onChange={e=>setCsvText(e.target.value)} />
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={uploadCsv} disabled={busy}>Upload CSV</button>
+        </div>
+      </div>
+      <div style={{ marginTop:12 }}>
+        <h3>Recruits</h3>
+        <ul>
+          {recruits.map(r => <li key={r.id}>{r.rank}. {r.name} – {r.position} – {r.stars}★ – pts:{r.points} – {r.outcome}</li>)}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
-  const [route, setRoute] = useState(window.location.hash || '#/analyze')
+  const [route, setRoute] = useState(window.location.hash || '#/rerank')
   const auth = useAuth()
-  useEffect(() => { const onHash = () => setRoute(window.location.hash || '#/analyze'); window.addEventListener('hashchange', onHash); return () => window.removeEventListener('hashchange', onHash) }, [])
+  useEffect(() => { const onHash = () => setRoute(window.location.hash || '#/rerank'); window.addEventListener('hashchange', onHash); return () => window.removeEventListener('hashchange', onHash) }, [])
   useEffect(() => { if (auth.token) localStorage.setItem('token', auth.token) }, [auth.token])
   return (
     <div style={{ padding: 16 }}>
@@ -135,6 +300,7 @@ export default function App() {
       {route.startsWith('#/analyze') && <AnalyzePage auth={auth} />}
       {route.startsWith('#/programs') && <ProgramsPage />}
       {route.startsWith('#/rerank') && <RerankPage auth={auth} />}
+      {route.startsWith('#/admin') && <AdminPage auth={auth} />}
     </div>
   )
 }

@@ -9,6 +9,8 @@ load_dotenv()
 import requests
 import os
 import json
+import requests
+from dotenv import load_dotenv
 
 from .services.nlp import analyze_text_cues
 from .services.scoring import aggregate_scores
@@ -24,6 +26,9 @@ from sqlalchemy.orm import Session
 # Security
 from .services.security import hash_password, verify_password, create_access_token, decode_token
 
+# load .env early
+load_dotenv()
+
 app = FastAPI(title="College Football Vibe Monitor (MVP)")
 
 # Create tables
@@ -36,6 +41,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Outcome mapping
+OUTCOME_POINTS: Dict[str, int] = {
+    "Bust": 0,
+    "4 Year Contributor": 1,
+    "College Starter": 2,
+    "All Conference": 3,
+    "All American": 4,
+    "Undrafted NFL Roster": 5,
+    "NFL Drafted": 6,
+    "NFL Starter": 7,
+    "NFL Pro Bowl": 8,
+}
 
 # Dependency
 def get_db():
@@ -90,6 +108,20 @@ class ReRankPayload(BaseModel):
     year: int | str
     team: str
     players: List[Dict[str, Any]]
+
+class RecruitPayload(BaseModel):
+    year: int
+    team: str
+    recruits: List[Dict[str, Any]]
+
+class RecruitOutcomeUpdate(BaseModel):
+    id: int
+    outcome: str
+
+class RecruitOutcomePayload(BaseModel):
+    year: int
+    team: str
+    updates: List[RecruitOutcomeUpdate]
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -203,6 +235,250 @@ async def save_rerank_class(
         json.dump(players_clean, f, ensure_ascii=False, indent=2)
 
     return {"ok": True, "saved": len(players_clean), "total_points": total, "avg_points": avg, "class_id": rerank.id}
+
+# Recruits: upload/list and recalc rerank from recruits
+@app.post("/api/recruits/upload")
+async def upload_recruits(payload: RecruitPayload, db: Session = Depends(get_db)):
+    # Upsert simplistic: delete existing year/team then insert
+    db.query(models.Recruit).filter(models.Recruit.year == payload.year, models.Recruit.team == payload.team).delete()
+    count = 0
+    for r in payload.recruits:
+        name = str(r.get("name", "")).strip()
+        if not name:
+            continue
+        rec = models.Recruit(
+            year=int(payload.year),
+            team=payload.team.strip(),
+            name=name,
+            position=str(r.get("position", "")).strip(),
+            stars=int(r.get("stars", 0) or 0),
+            rank=int(r.get("rank", 0) or 0),
+            outcome=str(r.get("outcome", "")).strip(),
+            points=int(r.get("points", 0) or 0),
+            note=str(r.get("note", "")).strip(),
+            source=str(r.get("source", "")).strip(),
+        )
+        db.add(rec)
+        count += 1
+    db.commit()
+    return {"ok": True, "saved": count}
+
+@app.get("/api/recruits/{year}/{team}")
+async def list_recruits(year: int, team: str, db: Session = Depends(get_db)):
+    rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).order_by(models.Recruit.rank.asc()).all()
+    return [{
+        "id": r.id,
+        "name": r.name,
+        "position": r.position,
+        "stars": r.stars,
+        "rank": r.rank,
+        "outcome": r.outcome,
+        "points": r.points,
+        "note": r.note,
+        "source": r.source,
+    } for r in rows]
+
+@app.post("/api/recruits/recalc/{year}/{team}")
+async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depends(get_db)):
+    rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No recruits for year/team")
+    players = [{"name": r.name, "points": int(r.points or 0), "note": r.note} for r in rows]
+    total = sum(p["points"] for p in players)
+    avg = round(total / max(1, len(players)), 2)
+
+    # Persist new class snapshot
+    rc = models.RerankClass(year=year, team=team, total_points=total, avg_points=avg)
+    db.add(rc)
+    db.commit()
+    db.refresh(rc)
+    for p in players:
+        db.add(models.RerankPlayer(class_id=rc.id, name=p["name"], points=p["points"], note=p["note"]))
+    db.commit()
+
+    return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg}
+
+@app.post("/api/recruits/outcomes")
+async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = Depends(get_db)):
+    changed = 0
+    for u in payload.updates:
+        row = db.get(models.Recruit, u.id)
+        if not row:
+            continue
+        if row.year != payload.year or row.team != payload.team:
+            continue
+        pts = OUTCOME_POINTS.get(u.outcome.strip(), None)
+        if pts is None:
+            raise HTTPException(status_code=400, detail=f"Unknown outcome: {u.outcome}")
+        row.outcome = u.outcome.strip()
+        row.points = int(pts)
+        changed += 1
+    db.commit()
+    return {"ok": True, "updated": changed}
+
+@app.post("/api/import/cfbd/{year}/{team}")
+async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Missing CFBD_API_KEY env var")
+    url = "https://api.collegefootballdata.com/recruiting/players"
+    params = {"year": year, "team": team}
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"CFBD error: {resp.text[:200]}")
+        data = resp.json() or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CFBD request failed: {e}")
+
+    # Map CFBD fields to Recruit
+    db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).delete()
+    saved = 0
+    for it in data:
+        name = str(it.get("athleteName") or it.get("name") or "").strip()
+        if not name:
+            continue
+        position = str(it.get("position") or "").strip()
+        stars = int((it.get("stars") or 0) or 0)
+        rank = int(it.get("ranking") or it.get("compositeRanking") or it.get("overallRank") or 0)
+        rec = models.Recruit(
+            year=year,
+            team=team,
+            name=name,
+            position=position,
+            stars=stars,
+            rank=rank,
+            outcome="",
+            points=0,
+            note="",
+            source="cfbd",
+        )
+        db.add(rec)
+        saved += 1
+    db.commit()
+    return {"ok": True, "imported": saved}
+
+@app.post("/api/import/cfbd/class")
+async def import_cfbd_class(year: int, team: str, db: Session = Depends(get_db)):
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Missing CFBD_API_KEY env var")
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # 1) Team class metadata
+    try:
+        t_resp = requests.get(
+            "https://api.collegefootballdata.com/recruiting/teams",
+            params={"year": year, "team": team}, headers=headers, timeout=30
+        )
+        if t_resp.status_code != 200:
+            raise HTTPException(status_code=t_resp.status_code, detail=f"CFBD teams error: {t_resp.text[:200]}")
+        t_data = (t_resp.json() or [])
+        meta = (t_data[0] if t_data else {})
+        national_rank = int(meta.get("rank", 0) or 0)
+        points = float(meta.get("points", 0.0) or 0.0)
+        avg_rating = float(meta.get("averageRating", 0.0) or 0.0)
+        avg_stars = float(meta.get("averageStars", 0.0) or 0.0)
+        commits = int(meta.get("commits", 0) or 0)
+        # Upsert ClassMeta
+        existing = db.query(models.ClassMeta).filter(models.ClassMeta.year == year, models.ClassMeta.team == team).first()
+        if existing:
+            existing.national_rank = national_rank
+            existing.points = points
+            existing.avg_rating = avg_rating
+            existing.avg_stars = avg_stars
+            existing.commits = commits
+        else:
+            db.add(models.ClassMeta(
+                year=year, team=team, national_rank=national_rank, points=points,
+                avg_rating=avg_rating, avg_stars=avg_stars, commits=commits
+            ))
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CFBD teams request failed: {e}")
+
+    # 2) Players
+    try:
+        p_resp = requests.get(
+            "https://api.collegefootballdata.com/recruiting/players",
+            params={"year": year, "team": team}, headers=headers, timeout=30
+        )
+        if p_resp.status_code != 200:
+            raise HTTPException(status_code=p_resp.status_code, detail=f"CFBD players error: {p_resp.text[:200]}")
+        players = (p_resp.json() or [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CFBD players request failed: {e}")
+
+    items = []
+    for it in players:
+        name = str(it.get("athleteName") or it.get("name") or "").strip()
+        if not name:
+            continue
+        rating = float(it.get("rating") or it.get("compositeRating") or 0.0)
+        provided_rank = int(it.get("ranking") or it.get("compositeRanking") or it.get("overallRank") or 0)
+        position = str(it.get("position") or "").strip()
+        stars = int((it.get("stars") or 0) or 0)
+        items.append({
+            "name": name,
+            "rating": rating,
+            "rank": provided_rank,
+            "position": position,
+            "stars": stars,
+        })
+
+    missing = [x for x in items if not x["rank"]]
+    if missing:
+        sorted_all = sorted(items, key=lambda x: x["rating"], reverse=True)
+        rank_map = {x["name"]: i + 1 for i, x in enumerate(sorted_all)}
+        for x in items:
+            if not x["rank"]:
+                x["rank"] = rank_map.get(x["name"], 0)
+
+    db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).delete()
+    saved = 0
+    for x in items:
+        note = f"rating:{x['rating']}"
+        rec = models.Recruit(
+            year=year,
+            team=team,
+            name=x["name"],
+            position=x["position"],
+            stars=x["stars"],
+            rank=x["rank"],
+            outcome="",
+            points=0,
+            note=note,
+            source="cfbd",
+        )
+        db.add(rec)
+        saved += 1
+    db.commit()
+
+    return {"ok": True, "imported": saved, "meta": {
+        "national_rank": national_rank, "points": points, "avg_rating": avg_rating, "avg_stars": avg_stars, "commits": commits
+    }}
+
+@app.get("/api/class/meta")
+async def get_class_meta(year: int, team: str, db: Session = Depends(get_db)):
+    cm = db.query(models.ClassMeta).filter(models.ClassMeta.year == year, models.ClassMeta.team == team).first()
+    if not cm:
+        raise HTTPException(status_code=404, detail="Class metadata not found")
+    return {
+        "year": cm.year,
+        "team": cm.team,
+        "national_rank": cm.national_rank,
+        "points": cm.points,
+        "avg_rating": cm.avg_rating,
+        "avg_stars": cm.avg_stars,
+        "commits": cm.commits,
+    }
+
+@app.post("/api/find")
+async def find_and_build(year: int, team: str, db: Session = Depends(get_db)):
+    _ = await import_cfbd_class(year, team, db)  # type: ignore
+    _ = await recalc_rerank_from_recruits(year, team, db)  # type: ignore
+    return {"ok": True, "message": "Imported (teams+players) and recalculated"}
 
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
 @app.get("/api/admin/analyses")
@@ -327,3 +603,18 @@ async def dashboard_index():
     return FileResponse(index_path)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/api/import/cfbd/status")
+async def cfbd_status():
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        return {"ok": False, "has_key": False, "reachable": False, "detail": "CFBD_API_KEY missing"}
+    try:
+        url = "https://api.collegefootballdata.com/recruiting/players"
+        params = {"year": 2002, "team": "Oklahoma State"}
+        headers = {"Authorization": f"Bearer {api_key}"}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        reachable = resp.status_code == 200
+        return {"ok": reachable, "has_key": True, "reachable": reachable, "status": resp.status_code}
+    except Exception as e:
+        return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}
