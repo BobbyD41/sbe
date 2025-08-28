@@ -91,6 +91,11 @@ class ReRankPayload(BaseModel):
     team: str
     players: List[Dict[str, Any]]
 
+class RecruitPayload(BaseModel):
+    year: int
+    team: str
+    recruits: List[Dict[str, Any]]
+
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == req.email).first()
@@ -203,6 +208,68 @@ async def save_rerank_class(
         json.dump(players_clean, f, ensure_ascii=False, indent=2)
 
     return {"ok": True, "saved": len(players_clean), "total_points": total, "avg_points": avg, "class_id": rerank.id}
+
+# Recruits: upload/list and recalc rerank from recruits
+@app.post("/api/recruits/upload")
+async def upload_recruits(payload: RecruitPayload, db: Session = Depends(get_db)):
+    # Upsert simplistic: delete existing year/team then insert
+    db.query(models.Recruit).filter(models.Recruit.year == payload.year, models.Recruit.team == payload.team).delete()
+    count = 0
+    for r in payload.recruits:
+        name = str(r.get("name", "")).strip()
+        if not name:
+            continue
+        rec = models.Recruit(
+            year=int(payload.year),
+            team=payload.team.strip(),
+            name=name,
+            position=str(r.get("position", "")).strip(),
+            stars=int(r.get("stars", 0) or 0),
+            rank=int(r.get("rank", 0) or 0),
+            outcome=str(r.get("outcome", "")).strip(),
+            points=int(r.get("points", 0) or 0),
+            note=str(r.get("note", "")).strip(),
+            source=str(r.get("source", "")).strip(),
+        )
+        db.add(rec)
+        count += 1
+    db.commit()
+    return {"ok": True, "saved": count}
+
+@app.get("/api/recruits/{year}/{team}")
+async def list_recruits(year: int, team: str, db: Session = Depends(get_db)):
+    rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).order_by(models.Recruit.rank.asc()).all()
+    return [{
+        "id": r.id,
+        "name": r.name,
+        "position": r.position,
+        "stars": r.stars,
+        "rank": r.rank,
+        "outcome": r.outcome,
+        "points": r.points,
+        "note": r.note,
+        "source": r.source,
+    } for r in rows]
+
+@app.post("/api/recruits/recalc/{year}/{team}")
+async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depends(get_db)):
+    rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No recruits for year/team")
+    players = [{"name": r.name, "points": int(r.points or 0), "note": r.note} for r in rows]
+    total = sum(p["points"] for p in players)
+    avg = round(total / max(1, len(players)), 2)
+
+    # Persist new class snapshot
+    rc = models.RerankClass(year=year, team=team, total_points=total, avg_points=avg)
+    db.add(rc)
+    db.commit()
+    db.refresh(rc)
+    for p in players:
+        db.add(models.RerankPlayer(class_id=rc.id, name=p["name"], points=p["points"], note=p["note"]))
+    db.commit()
+
+    return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg}
 
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
 @app.get("/api/admin/analyses")
