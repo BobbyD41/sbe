@@ -10,6 +10,7 @@ import requests
 import os
 import json
 import requests
+from dotenv import load_dotenv
 
 from .services.nlp import analyze_text_cues
 from .services.scoring import aggregate_scores
@@ -24,6 +25,9 @@ from sqlalchemy.orm import Session
 
 # Security
 from .services.security import hash_password, verify_password, create_access_token, decode_token
+
+# load .env early
+load_dotenv()
 
 app = FastAPI(title="College Football Vibe Monitor (MVP)")
 
@@ -289,8 +293,6 @@ async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"CFBD request failed: {e}")
 
     # Map CFBD fields to Recruit
-    # Common fields: athleteName, position, stars, rating, ranking (sometimes), recruitType
-    # We reset existing for year/team then insert
     db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).delete()
     saved = 0
     for it in data:
@@ -299,7 +301,6 @@ async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
             continue
         position = str(it.get("position") or "").strip()
         stars = int((it.get("stars") or 0) or 0)
-        # Try rank keys if present
         rank = int(it.get("ranking") or it.get("compositeRanking") or it.get("overallRank") or 0)
         rec = models.Recruit(
             year=year,
@@ -317,6 +318,13 @@ async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
         saved += 1
     db.commit()
     return {"ok": True, "imported": saved}
+
+@app.post("/api/find")
+async def find_and_build(year: int, team: str, db: Session = Depends(get_db)):
+    # Import recruits then recalc rerank snapshot
+    r = await import_cfbd(year, team, db)  # type: ignore
+    _ = await recalc_rerank_from_recruits(year, team, db)  # type: ignore
+    return {"ok": True, "imported": r.get("imported", 0), "message": "Imported and recalculated"}
 
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
 @app.get("/api/admin/analyses")

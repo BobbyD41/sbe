@@ -95,6 +95,7 @@ function RerankPage({ auth }) {
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [summary, setSummary] = useState(null)
+  const [busy, setBusy] = useState(false)
   async function load() {
     const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setSummary(res.ok ? await res.json() : null)
@@ -102,6 +103,15 @@ function RerankPage({ auth }) {
   async function saveDemo() {
     const res = await fetch(`${API_BASE}/rerank`, { method: 'POST', headers: { 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, players:[{ name:'Demo', points:3, note:'All Conference'}] }) })
     alert(res.ok ? 'Saved' : 'Save failed')
+  }
+  async function find() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/find?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      await load()
+      alert('Imported & recalculated')
+    } finally { setBusy(false) }
   }
   return (
     <div className="card">
@@ -111,6 +121,7 @@ function RerankPage({ auth }) {
         <input value={team} onChange={e=>setTeam(e.target.value)} />
         <button onClick={load}>Load</button>
         <button onClick={saveDemo}>Save Demo</button>
+        <button onClick={find} disabled={busy}>Find</button>
       </div>
       {summary && (
         <div style={{ marginTop:12 }}>
@@ -216,5 +227,4 @@ export default function App() {
       {route.startsWith('#/rerank') && <RerankPage auth={auth} />}
       {route.startsWith('#/admin') && <AdminPage auth={auth} />}
     </div>
-  )
-}
+  )}
