@@ -449,3 +449,18 @@ async def dashboard_index():
     return FileResponse(index_path)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/api/import/cfbd/status")
+async def cfbd_status():
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        return {"ok": False, "has_key": False, "reachable": False, "detail": "CFBD_API_KEY missing"}
+    try:
+        url = "https://api.collegefootballdata.com/recruiting/players"
+        params = {"year": 2002, "team": "Oklahoma State"}
+        headers = {"Authorization": f"Bearer {api_key}"}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        reachable = resp.status_code == 200
+        return {"ok": reachable, "has_key": True, "reachable": reachable, "status": resp.status_code}
+    except Exception as e:
+        return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}
