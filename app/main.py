@@ -9,6 +9,7 @@ load_dotenv()
 import requests
 import os
 import json
+import requests
 
 from .services.nlp import analyze_text_cues
 from .services.scoring import aggregate_scores
@@ -270,6 +271,52 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     db.commit()
 
     return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg}
+
+@app.post("/api/import/cfbd/{year}/{team}")
+async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Missing CFBD_API_KEY env var")
+    url = "https://api.collegefootballdata.com/recruiting/players"
+    params = {"year": year, "team": team}
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"CFBD error: {resp.text[:200]}")
+        data = resp.json() or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CFBD request failed: {e}")
+
+    # Map CFBD fields to Recruit
+    # Common fields: athleteName, position, stars, rating, ranking (sometimes), recruitType
+    # We reset existing for year/team then insert
+    db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).delete()
+    saved = 0
+    for it in data:
+        name = str(it.get("athleteName") or it.get("name") or "").strip()
+        if not name:
+            continue
+        position = str(it.get("position") or "").strip()
+        stars = int((it.get("stars") or 0) or 0)
+        # Try rank keys if present
+        rank = int(it.get("ranking") or it.get("compositeRanking") or it.get("overallRank") or 0)
+        rec = models.Recruit(
+            year=year,
+            team=team,
+            name=name,
+            position=position,
+            stars=stars,
+            rank=rank,
+            outcome="",
+            points=0,
+            note="",
+            source="cfbd",
+        )
+        db.add(rec)
+        saved += 1
+    db.commit()
+    return {"ok": True, "imported": saved}
 
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
 @app.get("/api/admin/analyses")

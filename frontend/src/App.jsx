@@ -16,6 +16,7 @@ function Nav() {
       <a href="#/analyze">Analyze</a>
       <a href="#/programs">Programs</a>
       <a href="#/rerank">ReRank</a>
+      <a href="#/admin">Admin</a>
       <a href="#/auth">Auth</a>
     </nav>
   )
@@ -123,6 +124,84 @@ function RerankPage({ auth }) {
   )
 }
 
+function AdminPage({ auth }) {
+  const [year, setYear] = useState('2002')
+  const [team, setTeam] = useState('Oklahoma State')
+  const [recruits, setRecruits] = useState([])
+  const [csvText, setCsvText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function load() {
+    const res = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
+    setRecruits(res.ok ? await res.json() : [])
+  }
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(Boolean)
+    const header = lines[0].split(',').map(s=>s.trim().toLowerCase())
+    return lines.slice(1).map(line => {
+      const cols = line.split(',')
+      const o = {}
+      header.forEach((h,i) => o[h] = (cols[i]||'').trim())
+      o.stars = Number(o.stars||0); o.rank = Number(o.rank||0); o.points = Number(o.points||0)
+      return o
+    })
+  }
+  async function uploadCsv() {
+    setBusy(true)
+    try {
+      const recruits = parseCsv(csvText)
+      const res = await fetch(`${API_BASE}/recruits/upload`, { method:'POST', headers:{ 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, recruits }) })
+      if (!res.ok) throw new Error('upload failed')
+      await load()
+      alert('Uploaded')
+    } finally { setBusy(false) }
+  }
+  async function importCfbd() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/import/cfbd/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      await load()
+      alert('Imported from CFBD')
+    } finally { setBusy(false) }
+  }
+  async function recalc() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+      if (!res.ok) throw new Error('recalc failed')
+      alert('ReRank snapshot created')
+    } finally { setBusy(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  return (
+    <div className="card">
+      <h2>Admin – Manage Recruits</h2>
+      <div style={{ display:'flex', gap:8 }}>
+        <input value={year} onChange={e=>setYear(e.target.value)} />
+        <input value={team} onChange={e=>setTeam(e.target.value)} />
+        <button onClick={load}>Load</button>
+        <button onClick={importCfbd} disabled={busy}>Import CFBD</button>
+        <button onClick={recalc} disabled={busy}>Recalc Class</button>
+      </div>
+      <div style={{ marginTop:12 }}>
+        <textarea rows={6} style={{ width:'100%' }} placeholder="CSV: name,position,stars,rank,outcome,points,note,source" value={csvText} onChange={e=>setCsvText(e.target.value)} />
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={uploadCsv} disabled={busy}>Upload CSV</button>
+        </div>
+      </div>
+      <div style={{ marginTop:12 }}>
+        <h3>Recruits</h3>
+        <ul>
+          {recruits.map(r => <li key={r.id}>{r.rank}. {r.name} – {r.position} – {r.stars}★ – pts:{r.points} – {r.outcome}</li>)}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [route, setRoute] = useState(window.location.hash || '#/analyze')
   const auth = useAuth()
@@ -135,6 +214,7 @@ export default function App() {
       {route.startsWith('#/analyze') && <AnalyzePage auth={auth} />}
       {route.startsWith('#/programs') && <ProgramsPage />}
       {route.startsWith('#/rerank') && <RerankPage auth={auth} />}
+      {route.startsWith('#/admin') && <AdminPage auth={auth} />}
     </div>
   )
 }
