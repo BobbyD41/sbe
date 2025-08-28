@@ -42,6 +42,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Outcome mapping
+OUTCOME_POINTS: Dict[str, int] = {
+    "Bust": 0,
+    "4 Year Contributor": 1,
+    "College Starter": 2,
+    "All Conference": 3,
+    "All American": 4,
+    "Undrafted NFL Roster": 5,
+    "NFL Drafted": 6,
+    "NFL Starter": 7,
+    "NFL Pro Bowl": 8,
+}
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -100,6 +113,15 @@ class RecruitPayload(BaseModel):
     year: int
     team: str
     recruits: List[Dict[str, Any]]
+
+class RecruitOutcomeUpdate(BaseModel):
+    id: int
+    outcome: str
+
+class RecruitOutcomePayload(BaseModel):
+    year: int
+    team: str
+    updates: List[RecruitOutcomeUpdate]
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -275,6 +297,24 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     db.commit()
 
     return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg}
+
+@app.post("/api/recruits/outcomes")
+async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = Depends(get_db)):
+    changed = 0
+    for u in payload.updates:
+        row = db.get(models.Recruit, u.id)
+        if not row:
+            continue
+        if row.year != payload.year or row.team != payload.team:
+            continue
+        pts = OUTCOME_POINTS.get(u.outcome.strip(), None)
+        if pts is None:
+            raise HTTPException(status_code=400, detail=f"Unknown outcome: {u.outcome}")
+        row.outcome = u.outcome.strip()
+        row.points = int(pts)
+        changed += 1
+    db.commit()
+    return {"ok": True, "updated": changed}
 
 @app.post("/api/import/cfbd/{year}/{team}")
 async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):

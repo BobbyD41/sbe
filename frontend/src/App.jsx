@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const OUTCOMES = [
+  'Bust','4 Year Contributor','College Starter','All Conference','All American',
+  'Undrafted NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
+]
 
 function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
@@ -96,9 +100,13 @@ function RerankPage({ auth }) {
   const [team, setTeam] = useState('Oklahoma State')
   const [summary, setSummary] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [recruits, setRecruits] = useState([])
+
   async function load() {
     const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setSummary(res.ok ? await res.json() : null)
+    const rr = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
+    setRecruits(rr.ok ? await rr.json() : [])
   }
   async function saveDemo() {
     const res = await fetch(`${API_BASE}/rerank`, { method: 'POST', headers: { 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, players:[{ name:'Demo', points:3, note:'All Conference'}] }) })
@@ -113,6 +121,27 @@ function RerankPage({ auth }) {
       alert('Imported & recalculated')
     } finally { setBusy(false) }
   }
+
+  function setOutcome(id, outcome) {
+    setRecruits(recruits.map(r => r.id === id ? { ...r, outcome } : r))
+  }
+  async function saveOutcomes() {
+    const updates = recruits.filter(r => OUTCOMES.includes(r.outcome || '')).map(r => ({ id: r.id, outcome: r.outcome }))
+    if (!updates.length) { alert('No changes'); return }
+    const res = await fetch(`${API_BASE}/recruits/outcomes`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ year: Number(year), team, updates }) })
+    if (!res.ok) { alert('Save failed'); return }
+    alert('Outcomes saved')
+    await load()
+  }
+  async function rerankFromOutcomes() {
+    const res = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+    if (!res.ok) { alert('Recalc failed'); return }
+    await load()
+    alert('ReRank snapshot created')
+  }
+
+  useEffect(() => { load() }, [])
+
   return (
     <div className="card">
       <h2>ReRank</h2>
@@ -123,8 +152,46 @@ function RerankPage({ auth }) {
         <button onClick={saveDemo}>Save Demo</button>
         <button onClick={find} disabled={busy}>Find</button>
       </div>
+
+      <div style={{ marginTop:12 }}>
+        <h3>Original Recruits (edit outcomes, then Save & ReRank)</h3>
+        <div>
+          {recruits.length ? (
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th>#</th><th>Name</th><th>Pos</th><th>Stars</th><th>Rank</th><th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recruits.map(r => (
+                  <tr key={r.id}>
+                    <td>{r.rank}</td>
+                    <td>{r.name}</td>
+                    <td>{r.position}</td>
+                    <td>{r.stars}</td>
+                    <td>{r.rank}</td>
+                    <td>
+                      <select value={r.outcome || ''} onChange={e=>setOutcome(r.id, e.target.value)}>
+                        <option value=''>Select outcome…</option>
+                        {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <em>No recruits loaded</em>}
+        </div>
+        <div style={{ display:'flex', gap:8, marginTop:8 }}>
+          <button onClick={saveOutcomes}>Save Outcomes</button>
+          <button onClick={rerankFromOutcomes}>ReRank From Outcomes</button>
+        </div>
+      </div>
+
       {summary && (
         <div style={{ marginTop:12 }}>
+          <h3>🏈 {summary.year} {summary.team} Recruiting Class – Final Rankings</h3>
           <div><strong>Total:</strong> {summary.total_points} • <strong>Avg:</strong> {summary.avg_points}</div>
           <ul>
             {(summary.players||[]).map(p => <li key={p.name}>{p.name} – {p.points} – {p.note}</li>)}
@@ -227,4 +294,5 @@ export default function App() {
       {route.startsWith('#/rerank') && <RerankPage auth={auth} />}
       {route.startsWith('#/admin') && <AdminPage auth={auth} />}
     </div>
-  )}
+  )
+}
