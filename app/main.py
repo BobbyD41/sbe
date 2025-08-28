@@ -4,6 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from dotenv import load_dotenv
+load_dotenv()
+import requests
 import os
 import json
 
@@ -296,6 +299,22 @@ async def delete_class(class_id: int, db: Session = Depends(get_db)):
     db.delete(rc)
     db.commit()
     return {"ok": True}
+
+@app.get("/api/import/cfbd/status")
+async def cfbd_status():
+    api_key = os.environ.get("CFBD_API_KEY", "")
+    if not api_key:
+        return {"ok": False, "has_key": False, "reachable": False, "detail": "CFBD_API_KEY missing"}
+    try:
+        url = "https://api.collegefootballdata.com/recruiting/players"
+        params = {"year": 2002, "team": "Oklahoma State"}
+        headers = {"Authorization": f"Bearer {api_key}"}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        reachable = resp.status_code == 200
+        return {"ok": reachable, "has_key": True, "reachable": reachable, "status": resp.status_code}
+    except Exception as e:
+        return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}
+
 
 # Static dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "static")
