@@ -101,16 +101,15 @@ function RerankPage({ auth }) {
   const [summary, setSummary] = useState(null)
   const [busy, setBusy] = useState(false)
   const [recruits, setRecruits] = useState([])
+  const [meta, setMeta] = useState(null)
 
   async function load() {
     const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setSummary(res.ok ? await res.json() : null)
     const rr = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setRecruits(rr.ok ? await rr.json() : [])
-  }
-  async function saveDemo() {
-    const res = await fetch(`${API_BASE}/rerank`, { method: 'POST', headers: { 'Content-Type':'application/json', ...auth.headers }, body: JSON.stringify({ year:Number(year), team, players:[{ name:'Demo', points:3, note:'All Conference'}] }) })
-    alert(res.ok ? 'Saved' : 'Save failed')
+    const cm = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+    setMeta(cm.ok ? await cm.json() : null)
   }
   async function find() {
     setBusy(true)
@@ -118,7 +117,7 @@ function RerankPage({ auth }) {
       const res = await fetch(`${API_BASE}/find?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method:'POST' })
       if (!res.ok) { const t = await res.text(); throw new Error(t) }
       await load()
-      alert('Imported & recalculated')
+      alert('Imported class (teams+players) & recalculated')
     } finally { setBusy(false) }
   }
 
@@ -149,9 +148,19 @@ function RerankPage({ auth }) {
         <input value={year} onChange={e=>setYear(e.target.value)} />
         <input value={team} onChange={e=>setTeam(e.target.value)} />
         <button onClick={load}>Load</button>
-        <button onClick={saveDemo}>Save Demo</button>
         <button onClick={find} disabled={busy}>Find</button>
       </div>
+
+      {meta && (
+        <div className="card" style={{ marginTop:12 }}>
+          <h3>Original Class (CFBD)</h3>
+          <div>National Rank: <strong>{meta.national_rank}</strong></div>
+          <div>Points: <strong>{meta.points}</strong></div>
+          <div>Avg Rating: <strong>{meta.avg_rating}</strong></div>
+          <div>Avg Stars: <strong>{meta.avg_stars}</strong></div>
+          <div>Commits: <strong>{meta.commits}</strong></div>
+        </div>
+      )}
 
       <div style={{ marginTop:12 }}>
         <h3>Original Recruits (edit outcomes, then Save & ReRank)</h3>
@@ -160,7 +169,7 @@ function RerankPage({ auth }) {
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
-                  <th>#</th><th>Name</th><th>Pos</th><th>Stars</th><th>Rank</th><th>Outcome</th>
+                  <th>#</th><th>Name</th><th>Pos</th><th>Stars</th><th>Outcome</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,7 +179,6 @@ function RerankPage({ auth }) {
                     <td>{r.name}</td>
                     <td>{r.position}</td>
                     <td>{r.stars}</td>
-                    <td>{r.rank}</td>
                     <td>
                       <select value={r.outcome || ''} onChange={e=>setOutcome(r.id, e.target.value)}>
                         <option value=''>Select outcome…</option>
@@ -281,9 +289,9 @@ function AdminPage({ auth }) {
 }
 
 export default function App() {
-  const [route, setRoute] = useState(window.location.hash || '#/analyze')
+  const [route, setRoute] = useState(window.location.hash || '#/rerank')
   const auth = useAuth()
-  useEffect(() => { const onHash = () => setRoute(window.location.hash || '#/analyze'); window.addEventListener('hashchange', onHash); return () => window.removeEventListener('hashchange', onHash) }, [])
+  useEffect(() => { const onHash = () => setRoute(window.location.hash || '#/rerank'); window.addEventListener('hashchange', onHash); return () => window.removeEventListener('hashchange', onHash) }, [])
   useEffect(() => { if (auth.token) localStorage.setItem('token', auth.token) }, [auth.token])
   return (
     <div style={{ padding: 16 }}>
