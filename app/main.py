@@ -74,6 +74,10 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/")
+async def root():
+    return {"message": "College Football Vibe Monitor API", "status": "running"}
+
 # Auth helpers
 def get_current_user_db(db: Session, authorization: Optional[str]) -> Optional[models.User]:
     if not authorization or not authorization.lower().startswith("bearer "):
