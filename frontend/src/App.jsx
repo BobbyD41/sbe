@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import { getTeamColors, TEAM_COLORS } from './teamColors'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 const OUTCOMES = [
@@ -20,6 +21,7 @@ function Nav() {
       <a href="#/analyze">Analyze</a>
       <a href="#/programs">Programs</a>
       <a href="#/rerank">ReRank</a>
+      <a href="#/leaderboard">Leaderboard</a>
       <a href="#/admin">Admin</a>
       <a href="#/auth">Auth</a>
     </nav>
@@ -102,6 +104,10 @@ function RerankPage({ auth }) {
   const [busy, setBusy] = useState(false)
   const [recruits, setRecruits] = useState([])
   const [meta, setMeta] = useState(null)
+  const [rerank, setRerank] = useState(null)
+  const [rerankPlayers, setRerankPlayers] = useState([])
+
+  const nameToOutcome = useMemo(() => Object.fromEntries((recruits||[]).map(r => [r.name, r.outcome || ''])), [recruits])
 
   async function load() {
     const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
@@ -117,6 +123,7 @@ function RerankPage({ auth }) {
       const res = await fetch(`${API_BASE}/find?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method:'POST' })
       if (!res.ok) { const t = await res.text(); throw new Error(t) }
       await load()
+      setRerank(null); setRerankPlayers([])
       alert('Imported class (teams+players) & recalculated')
     } finally { setBusy(false) }
   }
@@ -135,6 +142,16 @@ function RerankPage({ auth }) {
   async function rerankFromOutcomes() {
     const res = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
     if (!res.ok) { alert('Recalc failed'); return }
+    const data = await res.json()
+    // Fetch the rerank snapshot players by class id
+    const detail = await fetch(`${API_BASE}/admin/classes/${encodeURIComponent(data.class_id)}`)
+    const detailJson = detail.ok ? await detail.json() : null
+    // Fetch rerank meta (national rank, commits) for this team/year
+    const metaRes = await fetch(`${API_BASE}/rerank/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+    const metaJson = metaRes.ok ? await metaRes.json() : null
+    setRerank({ total_points: data.total_points, avg_points: data.avg_points, rank: metaJson?.rank || null, commits: metaJson?.commits || null })
+    const players = (detailJson?.players || []).slice().sort((a,b) => b.points - a.points)
+    setRerankPlayers(players)
     await load()
     alert('ReRank snapshot created')
   }
@@ -197,15 +214,372 @@ function RerankPage({ auth }) {
         </div>
       </div>
 
-      {summary && (
+      {rerank && (
         <div style={{ marginTop:12 }}>
-          <h3>🏈 {summary.year} {summary.team} Recruiting Class – Final Rankings</h3>
-          <div><strong>Total:</strong> {summary.total_points} • <strong>Avg:</strong> {summary.avg_points}</div>
-          <ul>
-            {(summary.players||[]).map(p => <li key={p.name}>{p.name} – {p.points} – {p.note}</li>)}
-          </ul>
+          <div className="card" style={{ marginBottom:12 }}>
+            <h3>ReRank Class</h3>
+            <div>National Rank: <strong>{rerank.rank ?? '-'}</strong></div>
+            <div>Points: <strong>{rerank.total_points}</strong></div>
+            <div>Avg Outcome Points: <strong>{rerank.avg_points}</strong></div>
+            <div>Commits: <strong>{rerank.commits ?? '-'}</strong></div>
+          </div>
+          <h3>ReRank Recruits</h3>
+          {rerankPlayers.length ? (
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th>#</th><th>Name</th><th>Outcome</th><th>Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rerankPlayers.map((p, idx) => (
+                  <tr key={p.name + idx}>
+                    <td>{idx + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{nameToOutcome[p.name] || ''}</td>
+                    <td>{p.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <em>No rerank snapshot yet</em>}
         </div>
       )}
+
+      {/* Removed legacy Final Rankings list; ReRank panel below now covers this */}
+    </div>
+  )
+}
+
+function LeaderboardPage() {
+  const [year, setYear] = useState('2002')
+  const [rows, setRows] = useState([])
+  const [busy, setBusy] = useState(false)
+
+  // Removed unused load function
+  
+  async function loadAllTeams() {
+    setBusy(true)
+    try {
+      // Get all teams with colors
+      const allTeams = Object.keys(TEAM_COLORS).filter(team => team !== 'default')
+      
+      // Try to get actual data for each team
+      const teamDataPromises = allTeams.map(async (team) => {
+        try {
+          // First try to get existing class meta data
+          let metaRes = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+          let meta = null
+          
+          if (metaRes.ok) {
+            meta = await metaRes.json()
+          } else {
+            // If no data exists, try to import it from CFBD automatically
+            try {
+              const importRes = await fetch(`${API_BASE}/import/cfbd/class?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method: 'POST' })
+              if (importRes.ok) {
+                // After import, fetch the meta data again
+                metaRes = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+                if (metaRes.ok) {
+                  meta = await metaRes.json()
+                }
+              }
+            } catch (importError) {
+              console.log(`Failed to import data for ${team}:`, importError)
+            }
+          }
+          
+          if (meta) {
+            return {
+              team,
+              rank: 0, // Will be calculated after sorting
+              total_points: 0,
+              avg_points: 0,
+              commits: meta.commits || 0,
+              hasData: true,
+              national_rank: meta.national_rank
+            }
+          }
+        } catch (error) {
+          console.log(`Failed to get data for ${team}:`, error)
+        }
+        
+        return {
+          team,
+          rank: 0,
+          total_points: 0,
+          avg_points: 0,
+          commits: 0,
+          hasData: false
+        }
+      })
+      
+      const teamData = await Promise.all(teamDataPromises)
+      
+      // Try to get rerank data for teams that have it
+      const rerankPromises = teamData.map(async (teamData) => {
+        try {
+          const rerankRes = await fetch(`${API_BASE}/rerank/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(teamData.team)}`)
+          if (rerankRes.ok) {
+            const rerank = await rerankRes.json()
+            return {
+              ...teamData,
+              total_points: rerank.total_points || 0,
+              avg_points: rerank.avg_points || 0,
+              commits: rerank.commits || teamData.commits || 0,
+              rank: rerank.rank || 0
+            }
+          }
+        } catch (error) {
+          console.log(`Failed to get rerank data for ${teamData.team}:`, error)
+        }
+        return teamData
+      })
+      
+      const finalData = await Promise.all(rerankPromises)
+      
+      // Sort by: 1) Has rerank data (points), 2) Number of commits, 3) Alphabetical
+      const sortedData = finalData.sort((a, b) => {
+        // First priority: teams with rerank data (points > 0)
+        if (a.total_points > 0 && b.total_points === 0) return -1
+        if (a.total_points === 0 && b.total_points > 0) return 1
+        
+        // Second priority: number of commits
+        if (a.commits !== b.commits) return b.commits - a.commits
+        
+        // Third priority: alphabetical
+        return a.team.localeCompare(b.team)
+      })
+      
+      // Assign ranks
+      sortedData.forEach((row, index) => {
+        row.rank = index + 1
+      })
+      
+      setRows(sortedData)
+    } finally { 
+      setBusy(false) 
+    }
+  }
+  
+  async function importAll() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/import/cfbd/all/${encodeURIComponent(year)}`, { method: 'POST' })
+      if (!res.ok) { const t = await res.text(); throw new Error(t) }
+      await loadAllTeams()
+      alert('Imported all teams for the year')
+    } finally { setBusy(false) }
+  }
+  
+  useEffect(() => { loadAllTeams() }, [year])
+
+  return (
+    <div className="card">
+      <h2>Leaderboard (ReRank)</h2>
+      <div style={{ display:'flex', gap:8, alignItems: 'center' }}>
+        <label>Year: </label>
+        <select value={year} onChange={e=>setYear(e.target.value)}>
+          {Array.from({length: 24}, (_, i) => 2002 + i).map(y => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <button onClick={loadAllTeams} disabled={busy}>Load All Teams</button>
+        <button onClick={importAll} disabled={busy}>Import All Teams</button>
+      </div>
+      <div style={{ marginTop:12 }}>
+        {rows.length ? (
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr>
+                <th>Rank</th><th>Team</th><th>Total Points</th><th>Avg Outcome</th><th>Commits</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.team}>
+                  <td>{r.rank}</td>
+                  <td><a href={`#/team/${encodeURIComponent(year)}/${encodeURIComponent(r.team)}`}>{r.team}</a></td>
+                  <td>{r.total_points > 0 ? r.total_points : '-'}</td>
+                  <td>{r.avg_points > 0 ? r.avg_points : '-'}</td>
+                  <td>{r.commits > 0 ? r.commits : '-'}</td>
+                  <td>{r.total_points > 0 ? 'Reranked' : r.hasData ? 'Has Data' : 'No Data'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <em>Loading teams...</em>}
+      </div>
+    </div>
+  )
+}
+
+function TeamPage() {
+  const [year, setYear] = useState('')
+  const [team, setTeam] = useState('')
+  const [meta, setMeta] = useState(null)
+  const [recruits, setRecruits] = useState([])
+  const [rerank, setRerank] = useState(null)
+  const [players, setPlayers] = useState([])
+
+  // parse from hash: #/team/{year}/{team}
+  useEffect(() => {
+    const parts = (window.location.hash || '').split('/')
+    if (parts.length >= 4) {
+      const y = decodeURIComponent(parts[2] || '')
+      const t = decodeURIComponent(parts.slice(3).join('/') || '')
+      setYear(y)
+      setTeam(t)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!year || !team) return
+    async function load() {
+      // First try to get existing class meta
+      let cm = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+      let metaData = cm.ok ? await cm.json() : null
+      
+      // If no meta data exists, try to import it from CFBD
+      if (!metaData) {
+        try {
+          const importRes = await fetch(`${API_BASE}/import/cfbd/class?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method: 'POST' })
+          if (importRes.ok) {
+            // After import, fetch the meta data again
+            cm = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+            metaData = cm.ok ? await cm.json() : null
+          }
+        } catch (error) {
+          console.log('Failed to import class data:', error)
+        }
+      }
+      
+      setMeta(metaData)
+      
+      // Get recruits data
+      const rr = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
+      setRecruits(rr.ok ? await rr.json() : [])
+      
+      // Get rerank data
+      const rm = await fetch(`${API_BASE}/rerank/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)
+      const rmJson = rm.ok ? await rm.json() : null
+      setRerank(rmJson)
+      
+      if (rmJson?.class_id) {
+        const detail = await fetch(`${API_BASE}/admin/classes/${encodeURIComponent(rmJson.class_id)}`)
+        const detailJson = detail.ok ? await detail.json() : null
+        setPlayers((detailJson?.players || []).slice().sort((a,b) => b.points - a.points))
+      }
+    }
+    load()
+  }, [year, team])
+
+  const nameToOutcome = useMemo(() => Object.fromEntries((recruits||[]).map(r => [r.name, r.outcome || ''])), [recruits])
+  const nameToPos = useMemo(() => Object.fromEntries((recruits||[]).map(r => [r.name, r.position || ''])), [recruits])
+  
+  const colors = getTeamColors(team)
+  const teamStyle = {
+    backgroundColor: colors.primaryBg,
+    border: `3px solid ${colors.primary}`,
+    borderRadius: '8px',
+    padding: '20px',
+    margin: '20px 0',
+    color: colors.primaryDark
+  }
+  const headerStyle = {
+    color: colors.primary,
+    borderBottom: `2px solid ${colors.secondary}`,
+    paddingBottom: '10px',
+    marginBottom: '20px'
+  }
+  const cardStyle = {
+    backgroundColor: colors.secondary,
+    border: `1px solid ${colors.primaryLight}`,
+    borderRadius: '6px',
+    padding: '15px',
+    margin: '15px 0',
+    boxShadow: `0 2px 4px ${colors.primaryLight}20`
+  }
+  const tableStyle = {
+    width: '100%',
+    borderCollapse: 'collapse',
+    backgroundColor: colors.secondary,
+    border: `1px solid ${colors.primary}`
+  }
+  const thStyle = {
+    backgroundColor: colors.primary,
+    color: colors.accent,
+    padding: '10px',
+    textAlign: 'left',
+    borderBottom: `2px solid ${colors.primaryDark}`
+  }
+  const tdStyle = {
+    padding: '8px 10px',
+    borderBottom: `1px solid ${colors.primaryLight}`,
+    color: colors.primaryDark
+  }
+
+  return (
+    <div style={teamStyle}>
+      <h2 style={headerStyle}>{year} {team}</h2>
+      <div style={cardStyle}>
+        <h3 style={{ color: colors.primary, marginTop: 0 }}>Original Class (CFBD)</h3>
+        {meta ? (
+          <>
+            <div>National Rank: <strong>{meta.national_rank}</strong></div>
+            <div>Points: <strong>{meta.points}</strong></div>
+            <div>Avg Rating: <strong>{meta.avg_rating}</strong></div>
+            <div>Avg Stars: <strong>{meta.avg_stars}</strong></div>
+            <div>Commits: <strong>{meta.commits}</strong></div>
+          </>
+        ) : (
+          <em>No original class data available</em>
+        )}
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <h3 style={{ color: colors.primary }}>ReRank Class</h3>
+        {rerank ? (
+          <div style={cardStyle}>
+            <div>National Rank: <strong>{rerank.rank ?? '-'}</strong></div>
+            <div>Points: <strong>{rerank.total_points}</strong></div>
+            <div>Avg Outcome Points: <strong>{rerank.avg_points}</strong></div>
+            <div>Commits: <strong>{rerank.commits ?? '-'}</strong></div>
+          </div>
+        ) : (
+          <div style={cardStyle}>
+            <em>No rerank snapshot available</em>
+          </div>
+        )}
+        
+        <h3 style={{ color: colors.primary }}>ReRank Recruits</h3>
+        {players.length ? (
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>#</th>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Pos</th>
+                <th style={thStyle}>Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.map((p, idx) => (
+                <tr key={p.name + idx}>
+                  <td style={tdStyle}>{idx + 1}</td>
+                  <td style={tdStyle}>{p.name}</td>
+                  <td style={tdStyle}>{nameToPos[p.name] || ''}</td>
+                  <td style={tdStyle}>{nameToOutcome[p.name] || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={cardStyle}>
+            <em>No rerank players available</em>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -300,6 +674,8 @@ export default function App() {
       {route.startsWith('#/analyze') && <AnalyzePage auth={auth} />}
       {route.startsWith('#/programs') && <ProgramsPage />}
       {route.startsWith('#/rerank') && <RerankPage auth={auth} />}
+      {route.startsWith('#/leaderboard') && <LeaderboardPage />}
+      {route.startsWith('#/team/') && <TeamPage />}
       {route.startsWith('#/admin') && <AdminPage auth={auth} />}
     </div>
   )
