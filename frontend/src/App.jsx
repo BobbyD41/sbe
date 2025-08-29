@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
+import { app, analytics } from './firebase'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 const OUTCOMES = [
@@ -97,10 +98,9 @@ function ProgramsPage() {
   )
 }
 
-function RerankPage({ auth }) {
+function RerankPage() {
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
-  const [summary, setSummary] = useState(null)
   const [busy, setBusy] = useState(false)
   const [recruits, setRecruits] = useState([])
   const [meta, setMeta] = useState(null)
@@ -110,8 +110,8 @@ function RerankPage({ auth }) {
   const nameToOutcome = useMemo(() => Object.fromEntries((recruits||[]).map(r => [r.name, r.outcome || ''])), [recruits])
 
   async function load() {
-    const res = await fetch(`${API_BASE}/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
-    setSummary(res.ok ? await res.json() : null)
+    // Remove unused 'res' variable and setSummary comment
+    // Optionally clear rerank state here if needed
     const rr = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     setRecruits(rr.ok ? await rr.json() : [])
     const cm = await fetch(`${API_BASE}/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`)

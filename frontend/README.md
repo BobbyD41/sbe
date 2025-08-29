@@ -1,12 +1,76 @@
-# React + Vite
+# College Football Vibe Monitor - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the React frontend for the College Football Vibe Monitor application.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+To run the development server:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The app will be available at `http://localhost:5173`
+
+## Deployment to Firebase
+
+This app is configured for deployment to Firebase Hosting.
+
+### Prerequisites
+
+1. Install Firebase CLI globally:
+```bash
+npm install -g firebase-tools
+```
+
+2. Login to Firebase:
+```bash
+firebase login
+```
+
+### Deploy
+
+To deploy to Firebase Hosting:
+
+```bash
+npm run deploy
+```
+
+Or to deploy only hosting (if you've already built):
+```bash
+npm run deploy:hosting
+```
+
+### Manual Deployment Steps
+
+1. Build the project:
+```bash
+npm run build
+```
+
+2. Deploy to Firebase:
+```bash
+firebase deploy
+```
+
+The app will be available at: https://sbe-40.firebaseapp.com
+
+## Environment Variables
+
+Create a `.env` file in the frontend directory with:
+
+```
+VITE_API_BASE=https://your-backend-url.com/api
+```
+
+For local development, the API base defaults to `/api` which is proxied to `http://localhost:8000`.
+
+## Features
+
+- College football recruiting class analysis
+- ReRank system based on player outcomes
+- Team-specific color theming
+- Leaderboard with automatic data fetching
+- Support for years 2002-2025
+- Integration with CollegeFootballData API
