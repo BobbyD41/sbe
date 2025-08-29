@@ -1,11 +1,8 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-pydantic==2.9.2
-requests==2.32.3
-beautifulsoup4==4.12.3
-textblob==0.18.0.post0
-aiofiles==23.2.1
-SQLAlchemy==2.0.34
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+python-dotenv==1.0.0
+requests==2.31.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-dotenv==1.0.1
+python-multipart==0.0.6
