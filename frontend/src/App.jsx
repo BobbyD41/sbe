@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
-import { app, analytics } from './firebase'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 const OUTCOMES = [
