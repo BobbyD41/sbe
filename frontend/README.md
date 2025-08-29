@@ -13,11 +13,55 @@ npm run dev
 
 The app will be available at `http://localhost:5173`
 
-## Deployment to Firebase
+## Deployment Options
 
-This app is configured for deployment to Firebase Hosting.
+This app can be deployed to either Firebase Hosting or Vercel.
 
-### Prerequisites
+### Option 1: Deploy to Vercel (Recommended)
+
+Vercel is often easier to set up and provides automatic deployments from GitHub.
+
+#### Prerequisites
+
+1. Install Vercel CLI globally:
+```bash
+npm install -g vercel
+```
+
+2. Login to Vercel:
+```bash
+vercel login
+```
+
+#### Deploy
+
+**Option A: Deploy via Vercel Dashboard (Easiest)**
+1. Go to [vercel.com](https://vercel.com) and sign up/login
+2. Click "New Project"
+3. Import your GitHub repository
+4. Set the following settings:
+   - Framework Preset: Vite
+   - Root Directory: `frontend`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+5. Add environment variable: `VITE_API_BASE` = `https://your-backend-url.com/api`
+6. Click "Deploy"
+
+**Option B: Deploy via CLI**
+```bash
+cd frontend
+vercel
+```
+
+**Option C: Deploy with custom domain**
+```bash
+cd frontend
+vercel --prod
+```
+
+### Option 2: Deploy to Firebase
+
+#### Prerequisites
 
 1. Install Firebase CLI globally:
 ```bash
@@ -29,7 +73,7 @@ npm install -g firebase-tools
 firebase login
 ```
 
-### Deploy
+#### Deploy
 
 To deploy to Firebase Hosting:
 
@@ -42,7 +86,7 @@ Or to deploy only hosting (if you've already built):
 npm run deploy:hosting
 ```
 
-### Manual Deployment Steps
+#### Manual Deployment Steps
 
 1. Build the project:
 ```bash

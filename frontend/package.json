@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview --port 5173",
     "deploy": "npm run build && firebase deploy",
-    "deploy:hosting": "firebase deploy --only hosting"
+    "deploy:hosting": "firebase deploy --only hosting",
+    "vercel-build": "vite build",
+    "vercel-dev": "vite --port 5173"
   },
   "dependencies": {
     "chart.js": "^4.5.0",
