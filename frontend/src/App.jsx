@@ -80,26 +80,27 @@ function Nav() {
         🏆 Leaderboard
       </a>
       {isAuthed && (
-        <>
-          <a 
-            href="#/rerank" 
-            style={{ 
-              textDecoration: 'none', 
-              color: '#495057', 
-              fontWeight: 'bold',
-              padding: '8px 12px',
-              borderRadius: '4px',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = '#e9ecef'
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = 'transparent'
-            }}
-          >
-            📊 ReRank
-          </a>
+        <a 
+          href="#/rerank" 
+          style={{ 
+            textDecoration: 'none', 
+            color: '#495057', 
+            fontWeight: 'bold',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = '#e9ecef'
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent'
+          }}
+        >
+          📊 ReRank
+        </a>
+      )}
+              {isAuthed && (
           <a 
             href="#/admin" 
             style={{ 
@@ -119,8 +120,7 @@ function Nav() {
           >
             ⚙️ Admin
           </a>
-        </>
-      )}
+        )}
       <div style={{ marginLeft: 'auto' }}>
         <a 
           href="#/auth" 
@@ -382,6 +382,42 @@ function RerankPage() {
     setRecruits(recruits.map(r => r.id === id ? { ...r, outcome } : r))
   }
 
+  async function deleteRecruit(recruitId) {
+    if (!confirm('Are you sure you want to delete this recruit?')) {
+      return
+    }
+
+    setBusy(true)
+    setMessage('Deleting recruit...')
+
+    try {
+      const response = await fetch(`${API_BASE}/recruits/${recruitId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to delete recruit')
+      }
+
+      // Remove the recruit from the list
+      setRecruits(recruits.filter(r => r.id !== recruitId))
+      
+      // Reload class data to show updated results
+      await loadClassData()
+      
+      setMessage('Recruit deleted successfully!')
+      setTimeout(() => setMessage(''), 3000)
+    } catch (error) {
+      setMessage(`Error: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function addNewRecruit() {
     if (!newRecruit.name.trim()) {
       setMessage('Please enter a recruit name')
@@ -589,6 +625,7 @@ function RerankPage() {
                   <th style={{ padding: '8px', textAlign: 'left' }}>Pos</th>
                   <th style={{ padding: '8px', textAlign: 'left' }}>Stars</th>
                   <th style={{ padding: '8px', textAlign: 'left' }}>Outcome</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -616,6 +653,27 @@ function RerankPage() {
                         <option value=''>Select outcome…</option>
                         {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      {r.source === 'manual' && (
+                        <button 
+                          onClick={() => deleteRecruit(r.id)}
+                          disabled={busy}
+                          style={{ 
+                            backgroundColor: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            cursor: busy ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                          title="Delete this manually added recruit"
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

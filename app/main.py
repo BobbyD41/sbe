@@ -504,6 +504,80 @@ async def add_recruit(
         }
     }
 
+@app.delete("/api/recruits/{recruit_id}")
+async def delete_recruit(
+    recruit_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Get the recruit
+    recruit = db.get(models.Recruit, recruit_id)
+    if not recruit:
+        raise HTTPException(status_code=404, detail="Recruit not found")
+    
+    # Only allow deletion of manually added recruits
+    if recruit.source != "manual":
+        raise HTTPException(status_code=403, detail="Can only delete manually added recruits")
+    
+    # Store year and team for updating class meta
+    year = recruit.year
+    team = recruit.team
+    
+    # Delete the recruit
+    db.delete(recruit)
+    db.commit()
+    
+    # Update class meta to reflect the deleted recruit
+    class_meta = db.query(models.ClassMeta).filter(
+        models.ClassMeta.year == year,
+        models.ClassMeta.team == team
+    ).first()
+    
+    if class_meta:
+        # Recalculate class meta based on remaining recruits
+        all_recruits = db.query(models.Recruit).filter(
+            models.Recruit.year == year,
+            models.Recruit.team == team
+        ).all()
+        
+        if all_recruits:
+            # Calculate new averages
+            total_stars = sum(r.stars for r in all_recruits if r.stars > 0)
+            stars_count = len([r for r in all_recruits if r.stars > 0])
+            
+            # Safely calculate rating average
+            total_rating = 0
+            rating_count = 0
+            for r in all_recruits:
+                if r.note and 'rating:' in r.note:
+                    try:
+                        rating_part = r.note.split('rating:')[1].strip()
+                        rating_value = float(rating_part)
+                        total_rating += rating_value
+                        rating_count += 1
+                    except (ValueError, IndexError):
+                        continue
+            
+            class_meta.commits = len(all_recruits)
+            if stars_count > 0:
+                class_meta.avg_stars = round(total_stars / stars_count, 3)
+            if rating_count > 0:
+                class_meta.avg_rating = round(total_rating / rating_count, 4)
+        else:
+            # No recruits left, reset to defaults
+            class_meta.commits = 0
+            class_meta.avg_stars = 0.0
+            class_meta.avg_rating = 0.0
+        
+        db.commit()
+    
+    return {"ok": True, "message": "Recruit deleted successfully"}
+
 @app.post("/api/import/cfbd/{year}/{team}")
 async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
     team = normalize_team_name(team)
