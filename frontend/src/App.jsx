@@ -4,10 +4,6 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
 
-// Simple test to see what's happening
-console.log('API_BASE:', API_BASE)
-console.log('VITE_API_BASE:', import.meta.env.VITE_API_BASE)
-
 const OUTCOMES = [
   'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
   'Undrafted but made NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
@@ -367,21 +363,15 @@ function LeaderboardPage() {
 
     setBusy(true)
     try {
-      console.log('Loading leaderboard for year:', year)
-      console.log('API_BASE:', API_BASE)
       const url = `${API_BASE}/leaderboard/rerank/${year}`
-      console.log('Fetching URL:', url)
       
       const res = await fetch(url)
-      console.log('Response status:', res.status)
-      console.log('Response ok:', res.ok)
       
       if (!res.ok) {
         throw new Error(`Failed to load leaderboard: ${res.status} ${res.statusText}`)
       }
 
       const data = await res.json()
-      console.log('Response data:', data)
       
       // Sort by: 1) Has rerank data (points > 0), 2) Number of commits, 3) Alphabetical
       const sortedData = data.rows.sort((a, b) => {
@@ -396,10 +386,8 @@ function LeaderboardPage() {
         return a.team.localeCompare(b.team)
       })
       
-      console.log('Sorted data:', sortedData)
       setRows(sortedData)
     } catch (error) {
-      console.error('Error loading leaderboard:', error)
       alert(`Error loading leaderboard: ${error.message}`)
     } finally {
       setBusy(false)
