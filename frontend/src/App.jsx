@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
 
-const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '') + '/api'
 
 const OUTCOMES = [
   'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
