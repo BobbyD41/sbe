@@ -11,12 +11,4 @@ export default defineConfig({
       }
     }
   }
-<<<<<<< Current (Your changes)
 })
-=======
-<<<<<<< HEAD
-})
-=======
-})
->>>>>>> 6fd6839 (frontend: dev proxy /api -> http://127.0.0.1:8000 for React)
->>>>>>> Incoming (Background Agent changes)

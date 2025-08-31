@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from dotenv import load_dotenv
 load_dotenv()
 import requests
@@ -13,10 +13,6 @@ import requests
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .services.nlp import analyze_text_cues
-from .services.scoring import aggregate_scores
-from .utils.scrape import collect_public_text
-from .services.programs import PROGRAM_PROFILES, match_program_fits
 from .services.rerank import get_class_summary
 
 # DB and models
@@ -31,7 +27,7 @@ from .services.security import hash_password, verify_password, create_access_tok
 # load .env early
 load_dotenv()
 
-app = FastAPI(title="College Football Vibe Monitor (MVP)")
+app = FastAPI(title="Stars to Stats - ReRank")
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -76,7 +72,7 @@ def get_db():
 
 @app.get("/")
 async def root():
-    return {"message": "College Football Vibe Monitor API", "status": "running"}
+    return {"message": "Stars to Stats - ReRank API", "status": "running"}
 
 
 # Auth helpers
@@ -104,24 +100,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
-class AnalyzeRequest(BaseModel):
-    player_name: str
-    high_school: Optional[str] = None
-    links: Optional[List[str]] = None
-    max_items: int = 50
-
-class AnalyzeResponse(BaseModel):
-    player_name: str
-    summary: str
-    scores: Dict[str, float]
-    signals: Dict[str, Any]
-
-class MatchRequest(BaseModel):
-    scores: Dict[str, float]
-    top_k: int = 5
-
 class ReRankPayload(BaseModel):
-    year: int | str
+    year: Union[int, str]
     team: str
     players: List[Dict[str, Any]]
 
@@ -158,48 +138,6 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token({"sub": str(user.id), "email": user.email})
     return TokenResponse(access_token=token)
-
-@app.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze_player(
-    req: AnalyzeRequest,
-    db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-):
-    texts = collect_public_text(req.player_name, req.high_school, req.links or [], req.max_items)
-    if not texts:
-        raise HTTPException(status_code=404, detail="No public data found for analysis")
-
-    analysis = analyze_text_cues(texts)
-    scores = aggregate_scores(analysis)
-
-    # Optional persistence if authenticated
-    user = get_current_user_db(db, authorization)
-    if user:
-        result = models.AnalyzeResult(
-            player_name=req.player_name,
-            summary=analysis.get("summary", ""),
-            scores=scores,
-            signals=analysis.get("signals", {}),
-            created_by=user.id,
-        )
-        db.add(result)
-        db.commit()
-
-    return AnalyzeResponse(
-        player_name=req.player_name,
-        summary=analysis.get("summary", "Preliminary personality snapshot from public data."),
-        scores=scores,
-        signals=analysis.get("signals", {}),
-    )
-
-@app.get("/api/programs")
-async def list_programs():
-    return {"programs": list(PROGRAM_PROFILES.keys())}
-
-@app.post("/api/match")
-async def match_programs(req: MatchRequest):
-    fits = match_program_fits(req.scores, req.top_k)
-    return {"fits": fits}
 
 @app.get("/api/rerank/{year}/{team}")
 async def rerank_class(year: int, team: str):
@@ -617,33 +555,6 @@ async def find_and_build(year: int, team: str, db: Session = Depends(get_db)):
     return {"ok": True, "message": "Imported (teams+players) and recalculated"}
 
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
-@app.get("/api/admin/analyses")
-async def list_analyses(db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None, alias="Authorization")):
-    user = get_current_user_db(db, authorization)
-    q = db.query(models.AnalyzeResult).order_by(models.AnalyzeResult.created_at.desc())
-    if user:
-        q = q
-    rows = q.limit(200).all()
-    return [{
-        "id": r.id,
-        "player_name": r.player_name,
-        "summary": r.summary,
-        "scores": r.scores,
-        "created_at": r.created_at.isoformat(),
-    } for r in rows]
-
-@app.delete("/api/admin/analyses/{analysis_id}")
-async def delete_analysis(analysis_id: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(default=None, alias="Authorization")):
-    user = get_current_user_db(db, authorization)
-    row = db.get(models.AnalyzeResult, analysis_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    if user and row.created_by and row.created_by != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    db.delete(row)
-    db.commit()
-    return {"ok": True}
-
 @app.get("/api/admin/classes")
 async def list_classes(db: Session = Depends(get_db)):
     rows = db.query(models.RerankClass).order_by(models.RerankClass.year.desc()).limit(200).all()
@@ -739,18 +650,3 @@ async def dashboard_index():
     return FileResponse(index_path)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-@app.get("/api/import/cfbd/status")
-async def cfbd_status():
-    api_key = os.environ.get("CFBD_API_KEY", "")
-    if not api_key:
-        return {"ok": False, "has_key": False, "reachable": False, "detail": "CFBD_API_KEY missing"}
-    try:
-        url = "https://api.collegefootballdata.com/recruiting/players"
-        params = {"year": 2002, "team": "Oklahoma State"}
-        headers = {"Authorization": f"Bearer {api_key}"}
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        reachable = resp.status_code == 200
-        return {"ok": reachable, "has_key": True, "reachable": reachable, "status": resp.status_code}
-    except Exception as e:
-        return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}

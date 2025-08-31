@@ -3,131 +3,170 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>College Football Vibe Monitor (MVP)</title>
+  <title>Stars to Stats – Leaderboard</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1200px; }
     h1 { margin-bottom: 0.5rem; }
     .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
-    label { display:block; font-weight: 600; margin-top: 0.5rem; }
-    input, textarea { width: 100%; padding: 8px; margin-top: 0.25rem; }
-    button { margin-top: 0.75rem; padding: 10px 16px; font-weight: 600; }
-    pre { background: #f7f7f8; padding: 1rem; border-radius: 8px; overflow: auto; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+    nav a { margin-right: 1rem; text-decoration: none; color: #333; }
+    nav a:hover { text-decoration: underline; }
     .muted { color: #666; }
-    nav a { margin-right: 1rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #e5e5e5; padding: 12px 8px; text-align: left; }
+    th { background: #fafafa; cursor: pointer; font-weight: 600; }
+    thead th { position: sticky; top: 0; }
+    .team-link { color: #0066cc; text-decoration: none; font-weight: 500; }
+    .team-link:hover { text-decoration: underline; }
+    .rank { font-weight: bold; color: #333; }
+    .points { font-weight: 600; color: #0066cc; }
+    .avg-points { color: #666; font-size: 0.9em; }
+    .commits { color: #666; font-size: 0.9em; }
+    .controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .controls input, .controls button { padding: 8px 12px; }
+    .controls button { background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .controls button:hover { background: #0052a3; }
+    .loading { text-align: center; padding: 2rem; color: #666; }
+    .error { color: #d32f2f; padding: 1rem; background: #ffebee; border-radius: 4px; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <h1>College Football Vibe Monitor (MVP)</h1>
+  <h1>Stars to Stats – Leaderboard</h1>
   <nav>
-    <a href="/">Analyze</a>
-    <a href="/static/programs.html">Programs</a>
+    <a href="/">Leaderboard</a>
     <a href="/static/rerank.html">ReRank</a>
   </nav>
-  <p class="muted">Analyze public signals to estimate coachability, leadership, ego, and team fit.</p>
+  <p class="muted">Revamping College Recruiting Rankings. ReRank reassesses past recruiting classes using a transparent point system to show how classes actually performed.</p>
 
   <div class="card">
-    <label for="player">Player Name</label>
-    <input id="player" placeholder="e.g., Nathan Porter" />
-
-    <label for="hs">High School</label>
-    <input id="hs" placeholder="e.g., Example High School" />
-
-    <label for="links">Links (optional, one per line)</label>
-    <textarea id="links" rows="4" placeholder="https://example.com/article\nhttps://youtube.com/... "></textarea>
-
-    <button id="analyze">Analyze</button>
+    <div class="controls">
+      <label>Year: <input id="year" type="number" value="2002" min="1990" max="2030" /></label>
+      <button id="loadLeaderboard">Load Leaderboard</button>
+      <button id="refreshData">Refresh Data</button>
+    </div>
   </div>
 
-  <div id="result" class="card" style="display:none;"></div>
+  <div id="leaderboard" class="card">
+    <div class="loading">Select a year and click "Load Leaderboard" to view rankings</div>
+  </div>
 
   <script>
-    let radarChart;
-    function renderRadar(scores) {
-      const labels = ['Coachability','Leadership','Ego','Team Fit'];
-      const data = labels.map(k => Number(scores?.[k] ?? 0));
-      let canvas = document.getElementById('radar');
-      if (!canvas) {
-        const res = document.getElementById('result');
-        const wrap = document.createElement('div');
-        wrap.innerHTML = '<h3>Scores Radar</h3><canvas id="radar" height="220"></canvas>';
-        res.appendChild(wrap);
-        canvas = wrap.querySelector('#radar');
+    let currentYear = 2002;
+    let currentData = null;
+
+    function renderLeaderboard(data) {
+      if (!data || !data.rows || data.rows.length === 0) {
+        return '<div class="error">No data available for this year</div>';
       }
-      const ctx = canvas.getContext('2d');
-      if (radarChart) radarChart.destroy();
-      radarChart = new Chart(ctx, {
-        type: 'radar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Player Scores',
-            data,
-            backgroundColor: 'rgba(54, 162, 235, 0.2)',
-            borderColor: 'rgb(54, 162, 235)',
-            pointBackgroundColor: 'rgb(54, 162, 235)'
-          }]
-        },
-        options: {
-          scales: { r: { suggestedMin: 0, suggestedMax: 100 } },
-          plugins: { legend: { display: false } }
+
+      const rows = data.rows.map(row => `
+        <tr>
+          <td class="rank">${row.rank}</td>
+          <td><a href="/static/rerank.html?year=${row.year}&team=${encodeURIComponent(row.team)}" class="team-link">${row.team}</a></td>
+          <td class="points">${row.total_points}</td>
+          <td class="avg-points">${row.avg_points.toFixed(2)}</td>
+          <td class="commits">${row.commits}</td>
+        </tr>
+      `).join('');
+
+      return `
+        <h3>🏈 ${data.year} Recruiting Class Rankings</h3>
+        <div class="muted">${data.count} teams ranked by total points</div>
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="rank">Rank</th>
+              <th data-sort="team">Team</th>
+              <th data-sort="total_points">Total Points</th>
+              <th data-sort="avg_points">Avg Points</th>
+              <th data-sort="commits">Commits</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function wireSorting(data) {
+      const ths = document.querySelectorAll('th[data-sort]');
+      ths.forEach(th => {
+        th.onclick = () => {
+          const key = th.getAttribute('data-sort');
+          const asc = th.getAttribute('data-asc') === 'true' ? false : true;
+          th.setAttribute('data-asc', asc);
+          
+          const sorted = [...data.rows].sort((a, b) => {
+            if (key === 'rank' || key === 'total_points' || key === 'avg_points' || key === 'commits') {
+              return asc ? a[key] - b[key] : b[key] - a[key];
+            }
+            return asc ? String(a[key]).localeCompare(String(b[key])) : String(b[key]).localeCompare(String(a[key]));
+          });
+          
+          const el = document.getElementById('leaderboard');
+          el.innerHTML = renderLeaderboard({ ...data, rows: sorted });
+          wireSorting({ ...data, rows: sorted });
         }
       });
     }
 
-    async function analyze() {
-      const player = document.getElementById('player').value.trim();
-      const hs = document.getElementById('hs').value.trim();
-      const linksRaw = document.getElementById('links').value.trim();
-      const links = linksRaw ? linksRaw.split(/\n+/).map(s => s.trim()).filter(Boolean) : [];
-
-      if (!player) { alert('Please enter a player name.'); return; }
-
-      const payload = { player_name: player, high_school: hs || null, links, max_items: 25 };
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const el = document.getElementById('result');
-      if (!res.ok) {
-        const txt = await res.text();
-        el.style.display = 'block';
-        el.innerHTML = `<strong>Error:</strong> ${res.status} ${txt}`;
+    async function loadLeaderboard() {
+      const year = document.getElementById('year').value.trim();
+      if (!year) {
+        alert('Please enter a year');
         return;
       }
 
-      const data = await res.json();
-      const scores = Object.entries(data.scores || {}).map(([k,v]) => `<div><strong>${k}:</strong> ${v}</div>`).join('');
+      const el = document.getElementById('leaderboard');
+      el.innerHTML = '<div class="loading">Loading leaderboard...</div>';
 
-      // Fetch program matches
-      const matchRes = await fetch('/api/match', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ scores: data.scores, top_k: 6 }) });
-      const matchData = matchRes.ok ? await matchRes.json() : { fits: [] };
-      const fits = (matchData.fits || []).map(f => `<div>${f.program}: <strong>${f.fit}%</strong></div>`).join('');
+      try {
+        const res = await fetch(`/api/leaderboard/rerank/${year}`);
+        if (!res.ok) {
+          el.innerHTML = `<div class="error">Failed to load leaderboard: ${res.status} ${res.statusText}</div>`;
+          return;
+        }
 
-      el.style.display = 'block';
-      el.innerHTML = `
-        <h3>Summary</h3>
-        <p>${data.summary}</p>
-        <div class="grid">
-          <div>
-            <h3>Scores</h3>
-            ${scores || '<em class="muted">No scores</em>'}
-            <h3 style="margin-top:1rem;">Best Program Fits</h3>
-            ${fits || '<em class="muted">No matches</em>'}
-          </div>
-          <div>
-            <h3>Signals</h3>
-            <pre>${JSON.stringify(data.signals, null, 2)}</pre>
-          </div>
-        </div>
-      `;
-      renderRadar(data.scores || {});
+        const data = await res.json();
+        currentData = data;
+        currentYear = parseInt(year);
+        
+        el.innerHTML = renderLeaderboard(data);
+        wireSorting(data);
+      } catch (error) {
+        el.innerHTML = `<div class="error">Error loading leaderboard: ${error.message}</div>`;
+      }
     }
 
-    document.getElementById('analyze').addEventListener('click', analyze);
+    async function refreshData() {
+      if (!currentYear) {
+        alert('Please load a leaderboard first');
+        return;
+      }
+
+      const el = document.getElementById('leaderboard');
+      el.innerHTML = '<div class="loading">Refreshing data...</div>';
+
+      try {
+        // This would typically trigger a data refresh from external sources
+        // For now, just reload the current leaderboard
+        await loadLeaderboard();
+      } catch (error) {
+        el.innerHTML = `<div class="error">Error refreshing data: ${error.message}</div>`;
+      }
+    }
+
+    // Event listeners
+    document.getElementById('loadLeaderboard').addEventListener('click', loadLeaderboard);
+    document.getElementById('refreshData').addEventListener('click', refreshData);
+    document.getElementById('year').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        loadLeaderboard();
+      }
+    });
+
+    // Auto-load default year
+    loadLeaderboard();
   </script>
 </body>
 </html>

@@ -1,4 +1,6 @@
-College Football Vibe Monitor (MVP)
+Stars to Stats - ReRank
+
+Revamping College Recruiting Rankings. ReRank reassesses past recruiting classes using a transparent point system to show how classes actually performed.
 
 Quick start
 
@@ -14,7 +16,11 @@ Quick start
 4) Open dashboard
    http://localhost:8000
 
-5) Test analyze endpoint
-   curl -X POST http://localhost:8000/api/analyze \
-     -H 'Content-Type: application/json' \
-     -d '{"player_name":"Test Player","high_school":"Example HS"}'
+5) Test rerank endpoint
+   curl -X GET http://localhost:8000/api/rerank/2002/Oklahoma%20State
+
+Features:
+- Leaderboard: View team rankings by year
+- ReRank: Analyze individual team recruiting classes
+- Team pages: Click on team names to view detailed class breakdowns
+- Data import: Import recruiting data from College Football Data API

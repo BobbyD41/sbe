@@ -21,8 +21,7 @@
 <body>
   <h1>Stars to Stats – ReRank</h1>
   <nav>
-    <a href="/">Analyze</a>
-    <a href="/static/programs.html">Programs</a>
+    <a href="/">Leaderboard</a>
     <a href="/static/rerank.html">ReRank</a>
   </nav>
 
@@ -195,6 +194,16 @@
     document.getElementById('previewCsv').addEventListener('click', previewCsv);
     document.getElementById('saveCsv').addEventListener('click', saveCsv);
 
+    // Check for URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlYear = urlParams.get('year');
+    const urlTeam = urlParams.get('team');
+    
+    if (urlYear && urlTeam) {
+      document.getElementById('year').value = urlYear;
+      document.getElementById('team').value = urlTeam;
+    }
+    
     // Auto-load default example
     load();
   </script>
