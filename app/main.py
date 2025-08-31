@@ -264,8 +264,24 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
 
 @app.get("/api/leaderboard/rerank/{year}")
 async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
-    # Get all teams that have been imported (have recruits or rerank data)
-    # First get teams with rerank data
+    # Define all teams with colors
+    all_teams = [
+        "Alabama", "Arkansas", "Auburn", "Florida", "Georgia", "Kentucky", "LSU", 
+        "Mississippi State", "Missouri", "Ole Miss", "South Carolina", "Tennessee", 
+        "Texas A&M", "Vanderbilt", "Texas", "Oklahoma", "Arizona", "Arizona State", 
+        "Baylor", "BYU", "Cincinnati", "Colorado", "Houston", "Iowa State", "Kansas", 
+        "Kansas State", "Oklahoma State", "TCU", "Texas Tech", "UCF", "Utah", 
+        "West Virginia", "Illinois", "Indiana", "Iowa", "Maryland", "Michigan", 
+        "Michigan State", "Minnesota", "Nebraska", "Northwestern", "Ohio State", 
+        "Penn State", "Purdue", "Rutgers", "Wisconsin", "Oregon", "UCLA", "USC", 
+        "Washington", "Oregon State", "Washington State", "Boston College", 
+        "Clemson", "Duke", "Florida State", "Georgia Tech", "Louisville", "Miami", 
+        "North Carolina", "NC State", "Pittsburgh", "Syracuse", "Virginia", 
+        "Virginia Tech", "Wake Forest", "California", "Stanford", "SMU", 
+        "Notre Dame", "UConn", "UMass", "Army", "Navy", "Air Force"
+    ]
+    
+    # Get teams with rerank data
     classes = db.query(models.RerankClass).filter(models.RerankClass.year == year).order_by(models.RerankClass.created_at.desc()).all()
     latest_by_team: Dict[str, models.RerankClass] = {}
     for rc in classes:
@@ -273,22 +289,17 @@ async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
         if key not in latest_by_team:
             latest_by_team[key] = rc
     
-    # Also get teams that have recruits but no rerank data yet
-    recruit_teams = db.query(models.Recruit.team).filter(models.Recruit.year == year).distinct().all()
-    for (team_name,) in recruit_teams:
-        key = normalize_team_name(team_name)
-        if key not in latest_by_team:
-            # Create a placeholder entry for teams with recruits but no rerank
-            latest_by_team[key] = None
-    
-    # Build rows
+    # Build rows for all teams
     rows = []
-    for team_name, rc in latest_by_team.items():
+    for team_name in all_teams:
+        normalized_team = normalize_team_name(team_name)
+        rc = latest_by_team.get(normalized_team)
+        
         if rc:
             # Team has rerank data
             commits = db.query(models.RerankPlayer).filter(models.RerankPlayer.class_id == rc.id).count()
             rows.append({
-                "team": normalize_team_name(team_name),
+                "team": normalized_team,
                 "year": rc.year,
                 "class_id": rc.id,
                 "total_points": rc.total_points,
@@ -297,25 +308,21 @@ async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
                 "has_rerank": True
             })
         else:
-            # Team has recruits but no rerank data
-            recruit_count = db.query(models.Recruit).filter(
-                models.Recruit.year == year, 
-                models.Recruit.team == team_name
-            ).count()
+            # Team has no data yet
             rows.append({
-                "team": normalize_team_name(team_name),
+                "team": normalized_team,
                 "year": year,
                 "class_id": None,
                 "total_points": 0,
                 "avg_points": 0,
-                "commits": recruit_count,
+                "commits": 0,
                 "has_rerank": False
             })
     
-    # Sort by: 1) Has rerank data (points > 0), 2) Number of commits, 3) Alphabetical
+    # Sort by: 1) Has rerank data (points > 0), 2) Total points (descending), 3) Alphabetical
     rows.sort(key=lambda r: (
         not r["has_rerank"],  # Teams with rerank data first
-        -r["commits"],        # Then by commits (descending)
+        -r["total_points"],   # Then by total points (descending)
         r["team"]             # Then alphabetically
     ))
     
@@ -353,6 +360,54 @@ async def rerank_meta(year: int, team: str, db: Session = Depends(get_db)):
         "total_points": rc.total_points,
         "avg_points": rc.avg_points,
         "commits": commits,
+    }
+
+@app.get("/api/team/{year}/{team}")
+async def get_team_data(year: int, team: str, db: Session = Depends(get_db)):
+    team = normalize_team_name(team)
+    
+    # Get original class meta
+    meta = None
+    recruits = []
+    rerank_meta = None
+    rerank_players = []
+    
+    # Try to get original class data
+    try:
+        meta_response = await class_meta(year=year, team=team, db=db)
+        meta = meta_response
+    except HTTPException:
+        pass
+    
+    # Try to get recruits
+    try:
+        recruits_response = await list_recruits(year=year, team=team, db=db)
+        recruits = recruits_response
+    except HTTPException:
+        pass
+    
+    # Try to get rerank data
+    try:
+        rerank_meta_response = await rerank_meta(year=year, team=team, db=db)
+        rerank_meta = rerank_meta_response
+    except HTTPException:
+        pass
+    
+    # Get rerank players if we have rerank data
+    if rerank_meta:
+        try:
+            players_response = await list_rerank_players(class_id=rerank_meta["class_id"], db=db)
+            rerank_players = players_response
+        except HTTPException:
+            pass
+    
+    return {
+        "year": year,
+        "team": team,
+        "meta": meta,
+        "recruits": recruits,
+        "rerank_meta": rerank_meta,
+        "rerank_players": rerank_players
     }
 
 @app.post("/api/recruits/outcomes")
