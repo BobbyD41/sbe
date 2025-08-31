@@ -20,6 +20,27 @@ const OUTCOME_POINTS = {
   'NFL Pro Bowl': 8
 }
 
+// Debug component to show environment variables
+function DebugInfo() {
+  const [apiTest, setApiTest] = useState('Testing...')
+  
+  useEffect(() => {
+    fetch(`${API_BASE}/leaderboard/rerank/2002`)
+      .then(res => res.json())
+      .then(data => setApiTest(`✅ API Working: ${data.count} teams`))
+      .catch(err => setApiTest(`❌ API Error: ${err.message}`))
+  }, [])
+  
+  return (
+    <div style={{ background: '#f0f0f0', padding: 10, margin: 10, borderRadius: 5 }}>
+      <h4>Debug Info:</h4>
+      <p><strong>API_BASE:</strong> {API_BASE}</p>
+      <p><strong>VITE_API_BASE:</strong> {import.meta.env.VITE_API_BASE || 'NOT SET'}</p>
+      <p><strong>API Test:</strong> {apiTest}</p>
+    </div>
+  )
+}
+
 function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const isAuthed = !!token
@@ -550,6 +571,7 @@ function App() {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
       <h1>Stars to Stats</h1>
       <Nav />
+      <DebugInfo />
       
       {route.startsWith('#/leaderboard') && <LeaderboardPage />}
       {route.startsWith('#/rerank') && <RerankPage />}
