@@ -50,24 +50,99 @@ function Nav() {
   const { isAuthed } = useAuth()
   
   return (
-    <nav style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-      <a href="#/leaderboard">Leaderboard</a>
+    <nav style={{ 
+      display: 'flex', 
+      gap: 12, 
+      marginBottom: 20, 
+      padding: '16px', 
+      backgroundColor: '#f8f9fa', 
+      borderRadius: '8px',
+      border: '1px solid #dee2e6',
+      alignItems: 'center'
+    }}>
+      <a 
+        href="#/leaderboard" 
+        style={{ 
+          textDecoration: 'none', 
+          color: '#495057', 
+          fontWeight: 'bold',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.backgroundColor = '#e9ecef'
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.backgroundColor = 'transparent'
+        }}
+      >
+        🏆 Leaderboard
+      </a>
       {isAuthed && (
         <>
-          <a href="#/rerank">ReRank</a>
-          <a href="#/admin">Admin</a>
+          <a 
+            href="#/rerank" 
+            style={{ 
+              textDecoration: 'none', 
+              color: '#495057', 
+              fontWeight: 'bold',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#e9ecef'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent'
+            }}
+          >
+            📊 ReRank
+          </a>
+          <a 
+            href="#/admin" 
+            style={{ 
+              textDecoration: 'none', 
+              color: '#495057', 
+              fontWeight: 'bold',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = '#e9ecef'
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = 'transparent'
+            }}
+          >
+            ⚙️ Admin
+          </a>
         </>
       )}
-      <a href="#/auth" style={{ 
-        backgroundColor: isAuthed ? '#dc3545' : '#28a745',
-        color: 'white',
-        padding: '8px 16px',
-        borderRadius: '4px',
-        textDecoration: 'none',
-        fontWeight: 'bold'
-      }}>
-        {isAuthed ? 'Logout' : 'Login'}
-      </a>
+      <div style={{ marginLeft: 'auto' }}>
+        <a 
+          href="#/auth" 
+          style={{ 
+            backgroundColor: isAuthed ? '#dc3545' : '#28a745',
+            color: 'white',
+            padding: '10px 20px',
+            borderRadius: '6px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.opacity = '0.8'
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.opacity = '1'
+          }}
+        >
+          {isAuthed ? '🚪 Logout' : '🔑 Login'}
+        </a>
+      </div>
     </nav>
   )
 }
@@ -357,22 +432,24 @@ function RerankPage() {
       })
       setShowAddForm(false)
       
-      // Recalculate rerank to include the new recruit
-      const recalcRes = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
+      // Only recalculate rerank if the new recruit has an outcome assigned
+      if (newRecruit.outcome.trim()) {
+        const recalcRes = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
 
-      if (!recalcRes.ok) {
-        const errorText = await recalcRes.text()
-        throw new Error(`Failed to recalculate rerank: ${errorText}`)
+        if (!recalcRes.ok) {
+          const errorText = await recalcRes.text()
+          throw new Error(`Failed to recalculate rerank: ${errorText}`)
+        }
       }
 
       // Reload class data to show updated results
       await loadClassData()
       
-      setMessage('Recruit added and class updated successfully!')
-      setTimeout(() => setMessage(''), 3000)
+      setMessage('Recruit added successfully!' + (newRecruit.outcome.trim() ? ' Rerank updated.' : ' Assign an outcome and click "Save & ReRank" to update rerank.'))
+      setTimeout(() => setMessage(''), 5000)
     } catch (error) {
       setMessage(`Error: ${error.message}`)
     } finally {
@@ -674,22 +751,39 @@ function RerankPage() {
           )}
         </div>
         
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button 
-            onClick={saveAndRerank} 
-            disabled={busy} 
-            style={{ 
-              backgroundColor: getTeamColors(team).primary, 
-              color: getTeamColors(team).accent,
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: '4px',
-              cursor: busy ? 'not-allowed' : 'pointer',
-              opacity: busy ? 0.6 : 1
-            }}
-          >
-            💾 Save & ReRank
-          </button>
+        <div style={{ 
+          display: 'flex', 
+          gap: 8, 
+          marginTop: 16, 
+          padding: '16px', 
+          backgroundColor: getTeamColors(team).secondaryLight, 
+          borderRadius: '8px', 
+          border: `2px solid ${getTeamColors(team).primaryLight}`,
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ color: getTeamColors(team).primaryDark }}>
+            <strong>Status:</strong> {recruits.filter(r => r.outcome && OUTCOMES.includes(r.outcome)).length} of {recruits.length} recruits have outcomes assigned
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button 
+              onClick={saveAndRerank} 
+              disabled={busy || recruits.filter(r => r.outcome && OUTCOMES.includes(r.outcome)).length === 0} 
+              style={{ 
+                backgroundColor: getTeamColors(team).primary, 
+                color: getTeamColors(team).accent,
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '6px',
+                cursor: (busy || recruits.filter(r => r.outcome && OUTCOMES.includes(r.outcome)).length === 0) ? 'not-allowed' : 'pointer',
+                opacity: (busy || recruits.filter(r => r.outcome && OUTCOMES.includes(r.outcome)).length === 0) ? 0.6 : 1,
+                fontWeight: 'bold',
+                fontSize: '14px'
+              }}
+            >
+              💾 Save & ReRank
+            </button>
+          </div>
         </div>
       </div>
 

@@ -251,9 +251,15 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).all()
     if not rows:
         raise HTTPException(status_code=404, detail="No recruits for year/team")
-    players = [{"name": r.name, "points": int(r.points or 0), "note": r.note} for r in rows]
-    total = sum(p["points"] for p in players)
-    avg = round(total / max(1, len(players)), 2)
+    
+    # Filter to only include recruits with outcomes assigned (points > 0)
+    players_with_outcomes = [{"name": r.name, "points": int(r.points or 0), "note": r.note} for r in rows if r.points > 0]
+    
+    if not players_with_outcomes:
+        raise HTTPException(status_code=400, detail="No recruits with outcomes assigned. Please assign outcomes to recruits before recalculating rerank.")
+    
+    total = sum(p["points"] for p in players_with_outcomes)
+    avg = round(total / max(1, len(players_with_outcomes)), 2)
 
     # Enforce single snapshot per team/year: delete previous snapshots and players
     old_classes = db.query(models.RerankClass).filter(models.RerankClass.year == year, models.RerankClass.team == team).all()
@@ -267,11 +273,11 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     db.add(rc)
     db.commit()
     db.refresh(rc)
-    for p in players:
+    for p in players_with_outcomes:
         db.add(models.RerankPlayer(class_id=rc.id, name=p["name"], points=p["points"], note=p["note"]))
     db.commit()
 
-    return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg}
+    return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg, "players_count": len(players_with_outcomes)}
 
 @app.get("/api/leaderboard/rerank/{year}")
 async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
