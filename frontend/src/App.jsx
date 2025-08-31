@@ -170,6 +170,17 @@ function RerankPage() {
   const [rerank, setRerank] = useState(null)
   const [rerankPlayers, setRerankPlayers] = useState([])
   const [message, setMessage] = useState('')
+  
+  // New recruit form state
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newRecruit, setNewRecruit] = useState({
+    name: '',
+    position: '',
+    stars: 0,
+    rank: 0,
+    outcome: '',
+    note: ''
+  })
 
   if (!isAuthed) {
     return (
@@ -294,6 +305,79 @@ function RerankPage() {
 
   function setOutcome(id, outcome) {
     setRecruits(recruits.map(r => r.id === id ? { ...r, outcome } : r))
+  }
+
+  async function addNewRecruit() {
+    if (!newRecruit.name.trim()) {
+      setMessage('Please enter a recruit name')
+      return
+    }
+
+    setBusy(true)
+    setMessage('Adding new recruit...')
+
+    try {
+      const response = await fetch(`${API_BASE}/recruits/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          year: Number(year),
+          team: team,
+          name: newRecruit.name.trim(),
+          position: newRecruit.position.trim(),
+          stars: Number(newRecruit.stars) || 0,
+          rank: Number(newRecruit.rank) || 0,
+          outcome: newRecruit.outcome.trim(),
+          note: newRecruit.note.trim(),
+          source: 'manual'
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Failed to add recruit')
+      }
+
+      const result = await response.json()
+      
+      // Add the new recruit to the list
+      setRecruits([...recruits, result.recruit])
+      
+      // Reset form
+      setNewRecruit({
+        name: '',
+        position: '',
+        stars: 0,
+        rank: 0,
+        outcome: '',
+        note: ''
+      })
+      setShowAddForm(false)
+      
+      // Recalculate rerank to include the new recruit
+      const recalcRes = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+
+      if (!recalcRes.ok) {
+        const errorText = await recalcRes.text()
+        throw new Error(`Failed to recalculate rerank: ${errorText}`)
+      }
+
+      // Reload class data to show updated results
+      await loadClassData()
+      
+      setMessage('Recruit added and class updated successfully!')
+      setTimeout(() => setMessage(''), 3000)
+    } catch (error) {
+      setMessage(`Error: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function saveAndRerank() {
@@ -462,6 +546,134 @@ function RerankPage() {
             </table>
           ) : <em>No recruits loaded</em>}
         </div>
+        
+        {/* Add New Recruit Section */}
+        <div style={{ marginTop: 16, padding: '16px', backgroundColor: getTeamColors(team).secondaryLight, borderRadius: '8px', border: `2px solid ${getTeamColors(team).primaryLight}` }}>
+          <h4 style={{ color: getTeamColors(team).primary, marginBottom: '12px' }}>
+            Add Additional Recruit
+          </h4>
+          
+          {!showAddForm ? (
+            <button 
+              onClick={() => setShowAddForm(true)}
+              style={{ 
+                backgroundColor: getTeamColors(team).primary, 
+                color: getTeamColors(team).accent,
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              ➕ Add New Recruit
+            </button>
+          ) : (
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Recruit Name *"
+                  value={newRecruit.name}
+                  onChange={(e) => setNewRecruit({...newRecruit, name: e.target.value})}
+                  style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${getTeamColors(team).primaryLight}` }}
+                />
+                <input
+                  type="text"
+                  placeholder="Position"
+                  value={newRecruit.position}
+                  onChange={(e) => setNewRecruit({...newRecruit, position: e.target.value})}
+                  style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${getTeamColors(team).primaryLight}` }}
+                />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input
+                  type="number"
+                  placeholder="Stars (0-5)"
+                  min="0"
+                  max="5"
+                  value={newRecruit.stars}
+                  onChange={(e) => setNewRecruit({...newRecruit, stars: e.target.value})}
+                  style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${getTeamColors(team).primaryLight}` }}
+                />
+                <input
+                  type="number"
+                  placeholder="Rank"
+                  min="0"
+                  value={newRecruit.rank}
+                  onChange={(e) => setNewRecruit({...newRecruit, rank: e.target.value})}
+                  style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${getTeamColors(team).primaryLight}` }}
+                />
+              </div>
+              
+              <select
+                value={newRecruit.outcome}
+                onChange={(e) => setNewRecruit({...newRecruit, outcome: e.target.value})}
+                style={{ 
+                  padding: '8px', 
+                  borderRadius: '4px', 
+                  border: `1px solid ${getTeamColors(team).primaryLight}`,
+                  backgroundColor: 'white'
+                }}
+              >
+                <option value="">Select outcome (optional)</option>
+                {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+              
+              <input
+                type="text"
+                placeholder="Note (optional)"
+                value={newRecruit.note}
+                onChange={(e) => setNewRecruit({...newRecruit, note: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: `1px solid ${getTeamColors(team).primaryLight}` }}
+              />
+              
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={addNewRecruit}
+                  disabled={busy}
+                  style={{ 
+                    backgroundColor: getTeamColors(team).primary, 
+                    color: getTeamColors(team).accent,
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: busy ? 0.6 : 1,
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✅ Add Recruit
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowAddForm(false)
+                    setNewRecruit({
+                      name: '',
+                      position: '',
+                      stars: 0,
+                      rank: 0,
+                      outcome: '',
+                      note: ''
+                    })
+                  }}
+                  style={{ 
+                    backgroundColor: '#6c757d', 
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ❌ Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button 
             onClick={saveAndRerank} 

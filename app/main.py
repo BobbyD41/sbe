@@ -119,6 +119,17 @@ class RecruitOutcomePayload(BaseModel):
     team: str
     updates: List[RecruitOutcomeUpdate]
 
+class AddRecruitPayload(BaseModel):
+    year: int
+    team: str
+    name: str
+    position: str = ""
+    stars: int = 0
+    rank: int = 0
+    outcome: str = ""
+    note: str = ""
+    source: str = "manual"
+
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(models.User).filter(models.User.email == req.email).first()
@@ -381,6 +392,111 @@ async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = 
         changed += 1
     db.commit()
     return {"ok": True, "updated": changed}
+
+@app.post("/api/recruits/add")
+async def add_recruit(
+    payload: AddRecruitPayload, 
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Validate required fields
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Name is required")
+    
+    # Normalize team name
+    team = normalize_team_name(payload.team)
+    
+    # Check if recruit already exists
+    existing = db.query(models.Recruit).filter(
+        models.Recruit.year == payload.year,
+        models.Recruit.team == team,
+        models.Recruit.name == payload.name.strip()
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=409, detail="Recruit already exists")
+    
+    # Calculate points if outcome is provided
+    points = 0
+    if payload.outcome.strip():
+        points = OUTCOME_POINTS.get(payload.outcome.strip(), 0)
+    
+    # Create new recruit
+    recruit = models.Recruit(
+        year=payload.year,
+        team=team,
+        name=payload.name.strip(),
+        position=payload.position.strip(),
+        stars=payload.stars,
+        rank=payload.rank,
+        outcome=payload.outcome.strip(),
+        points=points,
+        note=payload.note.strip(),
+        source=payload.source.strip(),
+    )
+    
+    db.add(recruit)
+    db.commit()
+    db.refresh(recruit)
+    
+    # Update class meta to reflect the new recruit
+    class_meta = db.query(models.ClassMeta).filter(
+        models.ClassMeta.year == payload.year,
+        models.ClassMeta.team == team
+    ).first()
+    
+    if class_meta:
+        # Recalculate class meta based on all recruits
+        all_recruits = db.query(models.Recruit).filter(
+            models.Recruit.year == payload.year,
+            models.Recruit.team == team
+        ).all()
+        
+        if all_recruits:
+            # Calculate new averages
+            total_stars = sum(r.stars for r in all_recruits if r.stars > 0)
+            stars_count = len([r for r in all_recruits if r.stars > 0])
+            
+            # Safely calculate rating average
+            total_rating = 0
+            rating_count = 0
+            for r in all_recruits:
+                if r.note and 'rating:' in r.note:
+                    try:
+                        rating_part = r.note.split('rating:')[1].strip()
+                        rating_value = float(rating_part)
+                        total_rating += rating_value
+                        rating_count += 1
+                    except (ValueError, IndexError):
+                        continue
+            
+            class_meta.commits = len(all_recruits)
+            if stars_count > 0:
+                class_meta.avg_stars = round(total_stars / stars_count, 3)
+            if rating_count > 0:
+                class_meta.avg_rating = round(total_rating / rating_count, 4)
+            
+            db.commit()
+    
+    return {
+        "ok": True, 
+        "recruit": {
+            "id": recruit.id,
+            "name": recruit.name,
+            "position": recruit.position,
+            "stars": recruit.stars,
+            "rank": recruit.rank,
+            "outcome": recruit.outcome,
+            "points": recruit.points,
+            "note": recruit.note,
+            "source": recruit.source,
+        }
+    }
 
 @app.post("/api/import/cfbd/{year}/{team}")
 async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
