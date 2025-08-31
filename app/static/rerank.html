@@ -5,18 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ReRank – Stars to Stats</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1100px; }
-    nav a { margin-right: 1rem; }
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 1200px; }
+    nav a { margin-right: 1rem; text-decoration: none; color: #333; }
+    nav a:hover { text-decoration: underline; }
     .card { border: 1px solid #ddd; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #e5e5e5; padding: 8px; text-align: left; }
-    th { background: #fafafa; cursor: pointer; }
+    th { background: #fafafa; cursor: pointer; font-weight: 600; }
     thead th { position: sticky; top: 0; }
     .muted { color: #666; }
     .row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
     .row > * { margin: 0.25rem 0; }
+    .controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .controls input, .controls button { padding: 8px 12px; }
+    .controls button { background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .controls button:hover { background: #0052a3; }
+    .controls button:disabled { background: #ccc; cursor: not-allowed; }
+    .loading { text-align: center; padding: 2rem; color: #666; }
+    .error { color: #d32f2f; padding: 1rem; background: #ffebee; border-radius: 4px; }
+    .success { color: #2e7d32; padding: 1rem; background: #e8f5e8; border-radius: 4px; }
+    .section { margin: 2rem 0; }
+    .section h3 { color: #0066cc; margin-bottom: 1rem; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .stat-card { background: #f8f9fa; padding: 1rem; border-radius: 4px; text-align: center; }
+    .stat-value { font-size: 1.5rem; font-weight: bold; color: #0066cc; }
+    .stat-label { font-size: 0.9rem; color: #666; margin-top: 0.5rem; }
+    .outcome-select { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; }
+    .rerank-section { background: #f0f8ff; border-left: 4px solid #0066cc; padding-left: 1rem; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <h1>Stars to Stats – ReRank</h1>
@@ -27,172 +43,427 @@
 
   <div class="card">
     <p>Revamping College Recruiting Rankings. ReRank reassesses past recruiting classes using a transparent point system to show how classes actually performed.</p>
-    <ul>
-      <li>Left Team/Little Contribution/Bust – 0</li>
-      <li>4 Year Contributor – 1</li>
-      <li>College Starter – 2</li>
-      <li>All Conference – 3</li>
-      <li>All American – 4</li>
-      <li>Undrafted but made NFL Roster – 5</li>
-      <li>NFL Drafted – 6</li>
-      <li>NFL Starter – 7</li>
-      <li>NFL Pro Bowl – 8</li>
-    </ul>
-  </div>
-
-  <div class="card">
-    <div class="row">
-      <label>Year <input id="year" value="2002" /></label>
-      <label>Team <input id="team" value="Oklahoma State"/></label>
-      <button id="load">Load Class</button>
-      <label>Filter min points <input id="minPoints" type="number" value="0" min="0" max="8" style="width:80px;"/></label>
-      <button id="applyFilter">Apply Filter</button>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">0</div>
+        <div class="stat-label">Left Team/Little Contribution/Bust</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">1</div>
+        <div class="stat-label">4 Year Contributor</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">2</div>
+        <div class="stat-label">College Starter</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">3</div>
+        <div class="stat-label">All Conference</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">4</div>
+        <div class="stat-label">All American</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">5</div>
+        <div class="stat-label">Undrafted but made NFL Roster</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">6</div>
+        <div class="stat-label">NFL Drafted</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">7</div>
+        <div class="stat-label">NFL Starter</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">8</div>
+        <div class="stat-label">NFL Pro Bowl</div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <div class="row">
-      <input id="csvFile" type="file" accept=".csv" />
-      <button id="previewCsv">Preview CSV</button>
-      <button id="saveCsv">Save to Dataset</button>
-      <span class="muted">CSV columns: name,points,note</span>
+    <div class="controls">
+      <label>Year: <input id="year" type="number" value="2002" min="1990" max="2030" /></label>
+      <label>Team: <input id="team" value="Oklahoma State" /></label>
+      <button id="find">Find Class</button>
+      <button id="load">Load Existing</button>
     </div>
   </div>
 
-  <div id="summary" class="card" style="display:none;"></div>
+  <!-- Original Class Section -->
+  <div id="originalClass" class="section" style="display:none;">
+    <h3>📊 Original Recruiting Class (CFBD)</h3>
+    <div id="originalMeta" class="card"></div>
+    
+    <div class="card">
+      <h4>🏈 Recruits - Assign Outcomes</h4>
+      <div id="recruitsTable"></div>
+      <div style="margin-top: 1rem;">
+        <button id="saveAndRerank" style="background: #28a745;">💾 Save & ReRank</button>
+        <span class="muted" style="margin-left: 1rem;">This will save outcomes and create a rerank snapshot</span>
+      </div>
+    </div>
+  </div>
 
-  <div class="card">
-    <h3>Points Distribution</h3>
-    <canvas id="bar" height="160"></canvas>
+  <!-- ReRank Results Section -->
+  <div id="rerankResults" class="section rerank-section" style="display:none;">
+    <h3>🏆 ReRank Results</h3>
+    <div id="rerankMeta" class="card"></div>
+    <div id="rerankTable" class="card"></div>
   </div>
 
   <script>
-    let currentSummary = null;
-    let barChart;
+    let currentRecruits = [];
+    let currentMeta = null;
+    let currentRerank = null;
+    let currentRerankPlayers = [];
 
-    function renderTable(summary) {
-      const rows = (summary.players || []).map(p => `
+    const OUTCOMES = [
+      'Left Team/Little Contribution/Bust',
+      '4 Year Contributor', 
+      'College Starter',
+      'All Conference',
+      'All American',
+      'Undrafted but made NFL Roster',
+      'NFL Drafted',
+      'NFL Starter',
+      'NFL Pro Bowl'
+    ];
+
+    const OUTCOME_POINTS = {
+      'Left Team/Little Contribution/Bust': 0,
+      '4 Year Contributor': 1,
+      'College Starter': 2,
+      'All Conference': 3,
+      'All American': 4,
+      'Undrafted but made NFL Roster': 5,
+      'NFL Drafted': 6,
+      'NFL Starter': 7,
+      'NFL Pro Bowl': 8
+    };
+
+    function renderOriginalMeta(meta) {
+      return `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${meta.national_rank || 'N/A'}</div>
+            <div class="stat-label">National Rank</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${meta.points || 'N/A'}</div>
+            <div class="stat-label">Points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${meta.avg_rating || 'N/A'}</div>
+            <div class="stat-label">Avg Rating</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${meta.avg_stars || 'N/A'}</div>
+            <div class="stat-label">Avg Stars</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${meta.commits || 'N/A'}</div>
+            <div class="stat-label">Commits</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecruitsTable(recruits) {
+      if (!recruits || recruits.length === 0) {
+        return '<em>No recruits found</em>';
+      }
+
+      const rows = recruits.map(r => `
         <tr>
-          <td>${p.name}</td>
-          <td>${p.points}</td>
-          <td>${p.note || ''}</td>
+          <td>${r.rank || ''}</td>
+          <td>${r.name}</td>
+          <td>${r.position || ''}</td>
+          <td>${r.stars || ''}</td>
+          <td>
+            <select class="outcome-select" data-id="${r.id}" onchange="updateOutcome(${r.id}, this.value)">
+              <option value="">Select outcome...</option>
+              ${OUTCOMES.map(o => `<option value="${o}" ${r.outcome === o ? 'selected' : ''}>${o}</option>`).join('')}
+            </select>
+          </td>
         </tr>
       `).join('');
+
       return `
-        <h3>🏈 ${summary.year} ${summary.team} Recruiting Class – Final Rankings</h3>
-        <div class="muted">Total Points: ${summary.total_points} • Average: ${summary.avg_points}</div>
         <table>
           <thead>
             <tr>
-              <th data-sort="name">Player</th>
-              <th data-sort="points">Points</th>
-              <th>Highest Level Reached Note</th>
+              <th>Rank</th>
+              <th>Name</th>
+              <th>Position</th>
+              <th>Stars</th>
+              <th>Outcome</th>
             </tr>
           </thead>
-          <tbody id="tbody">
+          <tbody>
             ${rows}
           </tbody>
         </table>
       `;
     }
 
-    function applyFilter() {
-      if (!currentSummary) return;
-      const minPoints = Number(document.getElementById('minPoints').value || 0);
-      const filtered = { ...currentSummary, players: currentSummary.players.filter(p => Number(p.points) >= minPoints) };
-      const el = document.getElementById('summary');
-      el.innerHTML = renderTable(filtered);
-      wireSorting(filtered);
-      renderBar(filtered);
+    function renderRerankMeta(rerank) {
+      return `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">${rerank.rank || 'N/A'}</div>
+            <div class="stat-label">ReRank National Rank</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${rerank.total_points}</div>
+            <div class="stat-label">Total Points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${rerank.avg_points}</div>
+            <div class="stat-label">Avg Points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${rerank.commits || 'N/A'}</div>
+            <div class="stat-label">Commits</div>
+          </div>
+        </div>
+      `;
     }
 
-    function wireSorting(summary) {
-      const ths = document.querySelectorAll('th[data-sort]');
-      ths.forEach(th => {
-        th.onclick = () => {
-          const key = th.getAttribute('data-sort');
-          const asc = th.getAttribute('data-asc') === 'true' ? false : true;
-          th.setAttribute('data-asc', asc);
-          const sorted = [...summary.players].sort((a,b) => {
-            if (key === 'points') return asc ? a.points - b.points : b.points - a.points;
-            return asc ? String(a[key]).localeCompare(String(b[key])) : String(b[key]).localeCompare(String(a[key]));
-          });
-          const el = document.getElementById('summary');
-          el.innerHTML = renderTable({ ...summary, players: sorted });
-          wireSorting({ ...summary, players: sorted });
+    function renderRerankTable(players) {
+      if (!players || players.length === 0) {
+        return '<em>No rerank data available</em>';
+      }
+
+      const rows = players.map((p, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${p.name}</td>
+          <td>${p.points}</td>
+          <td>${p.note || ''}</td>
+        </tr>
+      `).join('');
+
+      return `
+        <h4>🏆 Final Rankings</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Points</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function updateOutcome(id, outcome) {
+      currentRecruits = currentRecruits.map(r => 
+        r.id === id ? { ...r, outcome } : r
+      );
+    }
+
+    async function findClass() {
+      const year = document.getElementById('year').value.trim();
+      const team = document.getElementById('team').value.trim();
+      
+      if (!year || !team) {
+        alert('Please enter both year and team');
+        return;
+      }
+
+      const findBtn = document.getElementById('find');
+      findBtn.disabled = true;
+      findBtn.textContent = 'Finding...';
+
+      try {
+        // Import from CFBD API
+        const importRes = await fetch(`/api/import/cfbd/class?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { 
+          method: 'POST' 
+        });
+        
+        if (!importRes.ok) {
+          throw new Error(`Failed to import: ${importRes.statusText}`);
         }
-      });
+
+        // Load the imported data
+        await loadClassData();
+        
+        showMessage('Class imported successfully!', 'success');
+      } catch (error) {
+        showMessage(`Error: ${error.message}`, 'error');
+      } finally {
+        findBtn.disabled = false;
+        findBtn.textContent = 'Find Class';
+      }
     }
 
-    function renderBar(summary) {
-      const counts = Array(9).fill(0);
-      (summary.players || []).forEach(p => { const v = Number(p.points)||0; if (v>=0 && v<=8) counts[v]++; });
-      const ctx = document.getElementById('bar').getContext('2d');
-      if (barChart) barChart.destroy();
-      barChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: ['0','1','2','3','4','5','6','7','8'],
-          datasets: [{ label: 'Count', data: counts, backgroundColor: 'rgba(255, 159, 64, 0.5)'}]
-        },
-        options: { scales: { y: { beginAtZero: true, precision: 0 } }, plugins: { legend: { display: false } } }
-      });
-    }
-
-    async function load() {
+    async function loadExisting() {
       const year = document.getElementById('year').value.trim();
       const team = document.getElementById('team').value.trim();
-      const el = document.getElementById('summary');
-      el.style.display = 'block';
-      el.innerHTML = '<em>Loading…</em>';
-      const res = await fetch(`/api/rerank/${encodeURIComponent(year)}/${encodeURIComponent(team)}`);
-      if (!res.ok) { el.innerHTML = 'Class not found'; return; }
-      const data = await res.json();
-      currentSummary = data;
-      el.innerHTML = renderTable(data);
-      wireSorting(data);
-      renderBar(data);
+      
+      if (!year || !team) {
+        alert('Please enter both year and team');
+        return;
+      }
+
+      const loadBtn = document.getElementById('load');
+      loadBtn.disabled = true;
+      loadBtn.textContent = 'Loading...';
+
+      try {
+        await loadClassData();
+        showMessage('Class loaded successfully!', 'success');
+      } catch (error) {
+        showMessage(`Error: ${error.message}`, 'error');
+      } finally {
+        loadBtn.disabled = false;
+        loadBtn.textContent = 'Load Existing';
+      }
     }
 
-    function parseCsv(text) {
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      const header = lines[0].split(',').map(s => s.trim().toLowerCase());
-      const rows = lines.slice(1).map(line => {
-        const cols = line.split(',');
-        const obj = {};
-        header.forEach((h,i) => obj[h] = cols[i] ? cols[i].trim() : '');
-        obj.points = Number(obj.points || 0);
-        return obj;
-      });
-      return rows.map(r => ({ name: r.name, points: r.points, note: r.note }));
-    }
-
-    async function previewCsv() {
-      const input = document.getElementById('csvFile');
-      if (!input.files || !input.files[0]) { alert('Choose a CSV file first.'); return; }
-      const text = await input.files[0].text();
-      const players = parseCsv(text);
+    async function loadClassData() {
       const year = document.getElementById('year').value.trim();
       const team = document.getElementById('team').value.trim();
-      currentSummary = { year, team, players, total_points: players.reduce((s,p)=>s+(p.points||0),0), avg_points: 0 };
-      const el = document.getElementById('summary');
-      el.style.display = 'block';
-      el.innerHTML = renderTable(currentSummary);
-      wireSorting(currentSummary);
-      renderBar(currentSummary);
+
+      // Load class meta
+      const metaRes = await fetch(`/api/class/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`);
+      if (metaRes.ok) {
+        currentMeta = await metaRes.json();
+        document.getElementById('originalMeta').innerHTML = renderOriginalMeta(currentMeta);
+      }
+
+      // Load recruits
+      const recruitsRes = await fetch(`/api/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`);
+      if (recruitsRes.ok) {
+        currentRecruits = await recruitsRes.json();
+        document.getElementById('recruitsTable').innerHTML = renderRecruitsTable(currentRecruits);
+      } else {
+        currentRecruits = [];
+        document.getElementById('recruitsTable').innerHTML = '<em>No recruits found</em>';
+      }
+
+      // Show original class section
+      document.getElementById('originalClass').style.display = 'block';
+
+      // Load rerank data if it exists
+      await loadRerankData();
     }
 
-    async function saveCsv() {
-      if (!currentSummary) { alert('Nothing to save. Load or preview first.'); return; }
-      const res = await fetch('/api/rerank', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(currentSummary) });
-      if (!res.ok) { alert('Save failed'); return; }
-      alert('Saved');
+    async function loadRerankData() {
+      const year = document.getElementById('year').value.trim();
+      const team = document.getElementById('team').value.trim();
+
+      // Load rerank meta
+      const rerankMetaRes = await fetch(`/api/rerank/meta?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`);
+      if (rerankMetaRes.ok) {
+        currentRerank = await rerankMetaRes.json();
+        document.getElementById('rerankMeta').innerHTML = renderRerankMeta(currentRerank);
+        
+        // Load rerank players
+        if (currentRerank.class_id) {
+          const playersRes = await fetch(`/api/admin/classes/${currentRerank.class_id}`);
+          if (playersRes.ok) {
+            const classData = await playersRes.json();
+            currentRerankPlayers = (classData.players || []).sort((a, b) => b.points - a.points);
+            document.getElementById('rerankTable').innerHTML = renderRerankTable(currentRerankPlayers);
+          }
+        }
+        
+        document.getElementById('rerankResults').style.display = 'block';
+      } else {
+        document.getElementById('rerankResults').style.display = 'none';
+      }
     }
 
-    document.getElementById('load').addEventListener('click', load);
-    document.getElementById('applyFilter').addEventListener('click', applyFilter);
-    document.getElementById('previewCsv').addEventListener('click', previewCsv);
-    document.getElementById('saveCsv').addEventListener('click', saveCsv);
+    async function saveAndRerank() {
+      const year = document.getElementById('year').value.trim();
+      const team = document.getElementById('team').value.trim();
+      
+      if (!currentRecruits || currentRecruits.length === 0) {
+        alert('No recruits to save');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveAndRerank');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        // Save outcomes
+        const updates = currentRecruits
+          .filter(r => r.outcome && OUTCOMES.includes(r.outcome))
+          .map(r => ({ 
+            id: r.id, 
+            outcome: r.outcome,
+            points: OUTCOME_POINTS[r.outcome]
+          }));
+
+        if (updates.length === 0) {
+          alert('No outcomes to save. Please assign outcomes to recruits first.');
+          return;
+        }
+
+        const saveRes = await fetch('/api/recruits/outcomes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            year: Number(year), 
+            team, 
+            updates 
+          })
+        });
+
+        if (!saveRes.ok) {
+          throw new Error('Failed to save outcomes');
+        }
+
+        // Recalculate rerank
+        const recalcRes = await fetch(`/api/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, {
+          method: 'POST'
+        });
+
+        if (!recalcRes.ok) {
+          throw new Error('Failed to recalculate rerank');
+        }
+
+        // Reload data to show updated results
+        await loadClassData();
+        
+        showMessage('Outcomes saved and rerank calculated successfully!', 'success');
+      } catch (error) {
+        showMessage(`Error: ${error.message}`, 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Save & ReRank';
+      }
+    }
+
+    function showMessage(message, type) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      messageDiv.style.marginTop = '1rem';
+      
+      const originalClass = document.getElementById('originalClass');
+      originalClass.appendChild(messageDiv);
+      
+      setTimeout(() => {
+        messageDiv.remove();
+      }, 5000);
+    }
+
+    // Event listeners
+    document.getElementById('find').addEventListener('click', findClass);
+    document.getElementById('load').addEventListener('click', loadExisting);
+    document.getElementById('saveAndRerank').addEventListener('click', saveAndRerank);
 
     // Check for URL parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -202,10 +473,9 @@
     if (urlYear && urlTeam) {
       document.getElementById('year').value = urlYear;
       document.getElementById('team').value = urlTeam;
+      // Auto-load if coming from leaderboard
+      setTimeout(() => loadExisting(), 100);
     }
-    
-    // Auto-load default example
-    load();
   </script>
 </body>
 </html>

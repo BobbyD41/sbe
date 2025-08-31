@@ -42,12 +42,12 @@ app.add_middleware(
 
 # Outcome mapping
 OUTCOME_POINTS: Dict[str, int] = {
-    "Bust": 0,
+    "Left Team/Little Contribution/Bust": 0,
     "4 Year Contributor": 1,
     "College Starter": 2,
     "All Conference": 3,
     "All American": 4,
-    "Undrafted NFL Roster": 5,
+    "Undrafted but made NFL Roster": 5,
     "NFL Drafted": 6,
     "NFL Starter": 7,
     "NFL Pro Bowl": 8,

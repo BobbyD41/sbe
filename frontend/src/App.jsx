@@ -4,8 +4,8 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 const OUTCOMES = [
-  'Bust','4 Year Contributor','College Starter','All Conference','All American',
-  'Undrafted NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
+  'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
+  'Undrafted but made NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
 ]
 
 function useAuth() {
