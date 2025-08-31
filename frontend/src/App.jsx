@@ -6,11 +6,7 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 // Ensure it always ends with /api for consistency
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '') + '/api'
 
-// Debug logging
-console.log('=== DEBUG INFO ===')
-console.log('import.meta.env.VITE_API_BASE:', import.meta.env.VITE_API_BASE)
-console.log('API_BASE:', API_BASE)
-console.log('==================')
+
 
 const OUTCOMES = [
   'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
@@ -276,8 +272,13 @@ function RerankPage() {
       </div>
 
       {meta && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3>Original Class (CFBD)</h3>
+        <div className="card" style={{ 
+          marginTop: 12,
+          backgroundColor: getTeamColors(team).primaryBg,
+          borderLeft: `4px solid ${getTeamColors(team).primary}`,
+          color: getTeamColors(team).primaryDark
+        }}>
+          <h3 style={{ color: getTeamColors(team).primary }}>Original Class (CFBD)</h3>
           <div>National Rank: <strong>{meta.national_rank}</strong></div>
           <div>Points: <strong>{meta.points}</strong></div>
           <div>Avg Rating: <strong>{meta.avg_rating}</strong></div>
@@ -287,24 +288,41 @@ function RerankPage() {
       )}
 
       <div style={{ marginTop: 12 }}>
-        <h3>Original Recruits (edit outcomes, then Save & ReRank)</h3>
+        <h3 style={{ color: getTeamColors(team).primary }}>Original Recruits (edit outcomes, then Save & ReRank)</h3>
         <div>
           {recruits.length ? (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th>#</th><th>Name</th><th>Pos</th><th>Stars</th><th>Outcome</th>
+                <tr style={{ backgroundColor: getTeamColors(team).primary, color: getTeamColors(team).accent }}>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Pos</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Stars</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Outcome</th>
                 </tr>
               </thead>
               <tbody>
-                {recruits.map(r => (
-                  <tr key={r.id}>
-                    <td>{r.rank}</td>
-                    <td>{r.name}</td>
-                    <td>{r.position}</td>
-                    <td>{r.stars}</td>
-                    <td>
-                      <select value={r.outcome || ''} onChange={e=>setOutcome(r.id, e.target.value)}>
+                {recruits.map((r, index) => (
+                  <tr key={r.id} style={{ 
+                    backgroundColor: index % 2 === 0 ? getTeamColors(team).secondaryLight : getTeamColors(team).secondary,
+                    color: getTeamColors(team).primaryDark
+                  }}>
+                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{r.rank}</td>
+                    <td style={{ padding: '8px' }}>{r.name}</td>
+                    <td style={{ padding: '8px' }}>{r.position}</td>
+                    <td style={{ padding: '8px', fontWeight: 'bold' }}>{r.stars}</td>
+                    <td style={{ padding: '8px' }}>
+                      <select 
+                        value={r.outcome || ''} 
+                        onChange={e=>setOutcome(r.id, e.target.value)}
+                        style={{ 
+                          backgroundColor: getTeamColors(team).secondary,
+                          color: getTeamColors(team).primaryDark,
+                          border: `1px solid ${getTeamColors(team).primaryLight}`,
+                          padding: '4px',
+                          borderRadius: '4px'
+                        }}
+                      >
                         <option value=''>Select outcome…</option>
                         {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
@@ -316,15 +334,32 @@ function RerankPage() {
           ) : <em>No recruits loaded</em>}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button onClick={saveAndRerank} disabled={busy} style={{ backgroundColor: '#28a745', color: 'white' }}>
+          <button 
+            onClick={saveAndRerank} 
+            disabled={busy} 
+            style={{ 
+              backgroundColor: getTeamColors(team).primary, 
+              color: getTeamColors(team).accent,
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '4px',
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.6 : 1
+            }}
+          >
             💾 Save & ReRank
           </button>
         </div>
       </div>
 
       {rerank && (
-        <div className="card" style={{ marginTop: 12, backgroundColor: '#f0f8ff', borderLeft: '4px solid #0066cc' }}>
-          <h3>ReRank Results</h3>
+        <div className="card" style={{ 
+          marginTop: 12, 
+          backgroundColor: getTeamColors(team).primaryBg, 
+          borderLeft: `4px solid ${getTeamColors(team).primary}`,
+          color: getTeamColors(team).primaryDark
+        }}>
+          <h3 style={{ color: getTeamColors(team).primary }}>ReRank Results</h3>
           <div>National Rank: <strong>{rerank.rank || 'N/A'}</strong></div>
           <div>Total Points: <strong>{rerank.total_points}</strong></div>
           <div>Avg Points: <strong>{rerank.avg_points}</strong></div>
@@ -332,20 +367,26 @@ function RerankPage() {
           
           {rerankPlayers.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <h4>Final Rankings</h4>
+              <h4 style={{ color: getTeamColors(team).primary }}>Final Rankings</h4>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr>
-                    <th>Rank</th><th>Player</th><th>Points</th><th>Note</th>
+                  <tr style={{ backgroundColor: getTeamColors(team).primary, color: getTeamColors(team).accent }}>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Rank</th>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Player</th>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Points</th>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Note</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rerankPlayers.map((p, index) => (
-                    <tr key={index}>
-                      <td>{index + 1}</td>
-                      <td>{p.name}</td>
-                      <td>{p.points}</td>
-                      <td>{p.note || ''}</td>
+                    <tr key={index} style={{ 
+                      backgroundColor: index % 2 === 0 ? getTeamColors(team).secondaryLight : getTeamColors(team).secondary,
+                      color: getTeamColors(team).primaryDark
+                    }}>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{index + 1}</td>
+                      <td style={{ padding: '8px' }}>{p.name}</td>
+                      <td style={{ padding: '8px', fontWeight: 'bold' }}>{p.points}</td>
+                      <td style={{ padding: '8px' }}>{p.note || ''}</td>
                     </tr>
                   ))}
                 </tbody>
