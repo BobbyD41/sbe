@@ -221,11 +221,17 @@ function RerankPage() {
       setMeta(await metaRes.json())
     }
 
-    // Load recruits (now using detailed endpoint)
-    const recruitsRes = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}/detailed`)
+    // Load recruits (using basic endpoint for now)
+    const recruitsRes = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     if (recruitsRes.ok) {
-      const data = await recruitsRes.json()
-      setRecruits(data.recruits || [])
+      const recruitsData = await recruitsRes.json()
+      // Add metadata to recruits for frontend display
+      const recruitsWithMeta = recruitsData.map(r => ({
+        ...r,
+        is_manual: r.source === 'manual',
+        can_delete: r.source === 'manual'
+      }))
+      setRecruits(recruitsWithMeta)
     } else {
       setRecruits([])
     }
@@ -319,29 +325,23 @@ function RerankPage() {
     setMessage('Adding recruit...')
 
     try {
-      const response = await fetch(`${API_BASE}/recruits/add`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers
-        },
-        body: JSON.stringify({
-          year: Number(year),
-          team,
-          name: newRecruit.name.trim(),
-          position: newRecruit.position.trim(),
-          stars: Number(newRecruit.stars) || 0,
-          rank: Number(newRecruit.rank) || 0,
-          outcome: newRecruit.outcome,
-          points: Number(newRecruit.points) || 0,
-          note: newRecruit.note.trim()
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to add recruit')
+      // For now, we'll add the recruit to the local state since the backend endpoint isn't ready
+      const newRecruitWithId = {
+        id: Date.now(), // Temporary ID
+        name: newRecruit.name.trim(),
+        position: newRecruit.position.trim(),
+        stars: Number(newRecruit.stars) || 0,
+        rank: Number(newRecruit.rank) || 0,
+        outcome: newRecruit.outcome,
+        points: Number(newRecruit.points) || 0,
+        note: newRecruit.note.trim(),
+        source: 'manual',
+        is_manual: true,
+        can_delete: true
       }
+
+      // Add to local state
+      setRecruits([...recruits, newRecruitWithId])
 
       // Reset form
       setNewRecruit({
@@ -354,11 +354,8 @@ function RerankPage() {
         note: ''
       })
       setShowAddForm(false)
-
-      // Reload recruits
-      await loadClassData()
       
-      setMessage('Recruit added successfully!')
+      setMessage('Recruit added successfully! (Note: Backend endpoint not yet deployed)')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {
       setMessage(`Error: ${error.message}`)
@@ -376,20 +373,10 @@ function RerankPage() {
     setMessage('Deleting recruit...')
 
     try {
-      const response = await fetch(`${API_BASE}/recruits/${recruitId}`, {
-        method: 'DELETE',
-        headers
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to delete recruit')
-      }
-
-      // Reload recruits
-      await loadClassData()
+      // Remove from local state
+      setRecruits(recruits.filter(r => r.id !== recruitId))
       
-      setMessage('Recruit deleted successfully!')
+      setMessage('Recruit deleted successfully! (Note: Backend endpoint not yet deployed)')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {
       setMessage(`Error: ${error.message}`)
@@ -408,8 +395,11 @@ function RerankPage() {
     setMessage('Saving outcomes and calculating rerank...')
 
     try {
-      // Save outcomes
-      const updates = recruits
+      // Filter out manually added recruits for now (since backend endpoint isn't ready)
+      const originalRecruits = recruits.filter(r => !r.is_manual)
+      
+      // Save outcomes for original recruits
+      const updates = originalRecruits
         .filter(r => r.outcome && OUTCOMES.includes(r.outcome))
         .map(r => ({ 
           id: r.id, 
@@ -454,7 +444,7 @@ function RerankPage() {
       // Reload data to show updated results
       await loadClassData()
       
-      setMessage('Outcomes saved and rerank calculated successfully!')
+      setMessage('Outcomes saved and rerank calculated successfully! (Note: Manually added recruits not yet saved to backend)')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {
       setMessage(`Error: ${error.message}`)
