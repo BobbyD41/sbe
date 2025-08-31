@@ -1138,6 +1138,82 @@ function AdminPage({ auth }) {
   )
 }
 
+function DebugPage() {
+  const { token, setToken, isAuthed, headers } = useAuth()
+  const [testResults, setTestResults] = useState({})
+
+  async function testAuth() {
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'demo@example.com', password: 'demo1234' })
+      })
+      const data = await res.json()
+      setTestResults(prev => ({ ...prev, auth: { status: res.status, data } }))
+    } catch (error) {
+      setTestResults(prev => ({ ...prev, auth: { error: error.message } }))
+    }
+  }
+
+  async function testTeamData() {
+    try {
+      const metaRes = await fetch(`${API_BASE}/class/meta?year=2002&team=Texas`)
+      const metaData = await metaRes.json()
+      
+      const recruitsRes = await fetch(`${API_BASE}/recruits/2002/Texas`)
+      const recruitsData = await recruitsRes.json()
+      
+      setTestResults(prev => ({ 
+        ...prev, 
+        teamData: { 
+          meta: { status: metaRes.status, data: metaData },
+          recruits: { status: recruitsRes.status, count: recruitsData.length }
+        } 
+      }))
+    } catch (error) {
+      setTestResults(prev => ({ ...prev, teamData: { error: error.message } }))
+    }
+  }
+
+  return (
+    <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+      <h2>Debug Information</h2>
+      
+      <div style={{ marginBottom: '20px' }}>
+        <h3>Authentication Status</h3>
+        <p><strong>Token:</strong> {token ? 'Present' : 'Missing'}</p>
+        <p><strong>Is Authenticated:</strong> {isAuthed ? 'Yes' : 'No'}</p>
+        <p><strong>API Base:</strong> {API_BASE}</p>
+        <button onClick={testAuth} style={{ marginRight: '10px' }}>Test Auth</button>
+        <button onClick={() => setToken('')}>Clear Token</button>
+        {testResults.auth && (
+          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '4px' }}>
+            <pre>{JSON.stringify(testResults.auth, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <h3>Team Data Test</h3>
+        <button onClick={testTeamData}>Test Team Data (Texas 2002)</button>
+        {testResults.teamData && (
+          <div style={{ marginTop: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '4px' }}>
+            <pre>{JSON.stringify(testResults.teamData, null, 2)}</pre>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3>Navigation</h3>
+        <a href="#/leaderboard" style={{ marginRight: '10px' }}>Leaderboard</a>
+        <a href="#/team/2002/Texas" style={{ marginRight: '10px' }}>Texas Team Page</a>
+        <a href="#/auth">Auth Page</a>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const { token, setToken, isAuthed, headers } = useAuth()
   const [route, setRoute] = useState('')
@@ -1165,6 +1241,7 @@ function App() {
       {route.startsWith('#/rerank') && isAuthed && <RerankPage />}
       {route.startsWith('#/admin') && isAuthed && <AdminPage auth={{ headers }} />}
       {route.startsWith('#/auth') && <AuthPage onToken={setToken} />}
+      {route.startsWith('#/debug') && <DebugPage />}
       
       {!route.startsWith('#/') && <LeaderboardPage />}
     </div>
