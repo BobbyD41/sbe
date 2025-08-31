@@ -33,20 +33,28 @@ function useAuth() {
 }
 
 function Nav() {
+  const { isAuthed } = useAuth()
+  
   return (
     <nav style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
       <a href="#/leaderboard">Leaderboard</a>
-      <a href="#/rerank">ReRank</a>
-      <a href="#/admin">Admin</a>
-      <a href="#/auth">Auth</a>
+      {isAuthed && (
+        <>
+          <a href="#/rerank">ReRank</a>
+          <a href="#/admin">Admin</a>
+        </>
+      )}
+      <a href="#/auth">{isAuthed ? 'Logout' : 'Login'}</a>
     </nav>
   )
 }
 
 function AuthPage({ onToken }) {
+  const { isAuthed } = useAuth()
   const [email, setEmail] = useState('demo@example.com')
   const [password, setPassword] = useState('demo1234')
   const [msg, setMsg] = useState('')
+  
   async function submit(path) {
     setMsg('...')
     const res = await fetch(`${API_BASE}/auth/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
@@ -55,9 +63,25 @@ function AuthPage({ onToken }) {
     onToken(data.access_token)
     setMsg('ok')
   }
+  
+  function logout() {
+    onToken('')
+    window.location.hash = '#/leaderboard'
+  }
+  
+  if (isAuthed) {
+    return (
+      <div className="card">
+        <h2>Logout</h2>
+        <p>You are currently logged in.</p>
+        <button onClick={logout}>Logout</button>
+      </div>
+    )
+  }
+  
   return (
     <div className="card">
-      <h2>Auth</h2>
+      <h2>Login</h2>
       <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="email" />
       <input value={password} onChange={e=>setPassword(e.target.value)} placeholder="password" type="password" />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -421,21 +445,7 @@ function LeaderboardPage() {
       }
 
       const data = await res.json()
-      
-      // Sort by: 1) Has rerank data (points > 0), 2) Number of commits, 3) Alphabetical
-      const sortedData = data.rows.sort((a, b) => {
-        // First priority: teams with rerank data (points > 0)
-        if (a.total_points > 0 && b.total_points === 0) return -1
-        if (a.total_points === 0 && b.total_points > 0) return 1
-        
-        // Second priority: number of commits
-        if (a.commits !== b.commits) return b.commits - a.commits
-        
-        // Third priority: alphabetical
-        return a.team.localeCompare(b.team)
-      })
-      
-      setRows(sortedData)
+      setRows(data.rows)
     } catch (error) {
       alert(`Error loading leaderboard: ${error.message}`)
     } finally {
@@ -445,41 +455,324 @@ function LeaderboardPage() {
 
   useEffect(() => {
     loadLeaderboard()
-  }, [])
+  }, [year])
+
+  function handleTeamClick(team) {
+    window.location.hash = `#/team/${year}/${encodeURIComponent(team)}`
+  }
 
   return (
-    <div className="card">
-      <h2>Leaderboard</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input value={year} onChange={e=>setYear(e.target.value)} placeholder="Year" />
-        <button onClick={loadLeaderboard} disabled={busy}>Load Leaderboard</button>
+    <div>
+      <h1>🏆 College Football Recruiting Leaderboard</h1>
+      <div style={{ marginBottom: 16 }}>
+        <label>Year: <input value={year} onChange={e => setYear(e.target.value)} type="number" min="1990" max="2030" /></label>
+        <button onClick={loadLeaderboard} disabled={busy} style={{ marginLeft: 8 }}>
+          {busy ? 'Loading...' : 'Refresh'}
+        </button>
       </div>
+      
+      {rows.length > 0 ? (
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {rows.map(row => {
+            const teamColors = getTeamColors(row.team)
+            return (
+              <div 
+                key={row.team}
+                onClick={() => handleTeamClick(row.team)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '12px',
+                  backgroundColor: teamColors.primaryBg,
+                  border: `2px solid ${teamColors.primary}`,
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  color: teamColors.primaryDark
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'scale(1.02)'
+                  e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)'
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'scale(1)'
+                  e.target.style.boxShadow = 'none'
+                }}
+              >
+                <div style={{ 
+                  width: '40px', 
+                  height: '40px', 
+                  backgroundColor: teamColors.primary,
+                  color: teamColors.accent,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  marginRight: '12px'
+                }}>
+                  {row.rank}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    fontSize: '18px', 
+                    fontWeight: 'bold',
+                    color: teamColors.primary
+                  }}>
+                    {row.team}
+                  </div>
+                  <div style={{ fontSize: '14px', opacity: 0.8 }}>
+                    {row.has_rerank ? 
+                      `${row.total_points} points • ${row.avg_points} avg • ${row.commits} commits` :
+                      'No data available'
+                    }
+                  </div>
+                </div>
+                <div style={{ 
+                  padding: '4px 8px',
+                  backgroundColor: row.has_rerank ? teamColors.primary : '#ccc',
+                  color: row.has_rerank ? teamColors.accent : '#666',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {row.has_rerank ? 'RERANKED' : 'PENDING'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p>No teams found for {year}</p>
+      )}
+    </div>
+  )
+}
 
-      <div>
-        {rows.length ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th>Rank</th><th>Team</th><th>Total Points</th><th>Avg Points</th><th>Commits</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(row => (
-                <tr key={row.team}>
-                  <td>{row.rank}</td>
-                  <td>
-                    <a href={`#/rerank/team/${row.year}/${encodeURIComponent(row.team)}`} style={{ color: '#0066cc', textDecoration: 'none' }}>
-                      {row.team}
-                    </a>
-                  </td>
-                  <td>{row.total_points}</td>
-                  <td>{row.avg_points.toFixed(2)}</td>
-                  <td>{row.commits}</td>
+function TeamPage() {
+  const [year, setYear] = useState('')
+  const [team, setTeam] = useState('')
+  const [teamData, setTeamData] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const hash = window.location.hash
+    const match = hash.match(/#\/team\/(\d+)\/(.+)/)
+    if (match) {
+      const [, yearParam, teamParam] = match
+      setYear(yearParam)
+      setTeam(decodeURIComponent(teamParam))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (year && team) {
+      loadTeamData()
+    }
+  }, [year, team])
+
+  async function loadTeamData() {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/team/${year}/${encodeURIComponent(team)}`)
+      if (!res.ok) {
+        throw new Error(`Failed to load team data: ${res.status}`)
+      }
+      const data = await res.json()
+      setTeamData(data)
+    } catch (error) {
+      alert(`Error loading team data: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (busy) {
+    return <div>Loading team data...</div>
+  }
+
+  if (!teamData) {
+    return <div>No team data available</div>
+  }
+
+  const teamColors = getTeamColors(team)
+
+  return (
+    <div style={{ 
+      backgroundColor: teamColors.primaryBg,
+      minHeight: '100vh',
+      padding: '20px'
+    }}>
+      <div style={{ 
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '24px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+        border: `3px solid ${teamColors.primary}`
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          marginBottom: '24px',
+          paddingBottom: '16px',
+          borderBottom: `2px solid ${teamColors.primary}`
+        }}>
+          <button 
+            onClick={() => window.location.hash = '#/leaderboard'}
+            style={{
+              backgroundColor: teamColors.primary,
+              color: teamColors.accent,
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              marginRight: '16px'
+            }}
+          >
+            ← Back to Leaderboard
+          </button>
+          <h1 style={{ 
+            color: teamColors.primary,
+            margin: 0,
+            fontSize: '32px',
+            fontWeight: 'bold'
+          }}>
+            {team} - {year}
+          </h1>
+        </div>
+
+        {teamData.meta && (
+          <div style={{ 
+            backgroundColor: teamColors.primaryBg,
+            padding: '16px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            border: `1px solid ${teamColors.primaryLight}`
+          }}>
+            <h3 style={{ color: teamColors.primary, marginTop: 0 }}>Original Class (CFBD)</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              <div><strong>National Rank:</strong> {teamData.meta.national_rank}</div>
+              <div><strong>Points:</strong> {teamData.meta.points}</div>
+              <div><strong>Avg Rating:</strong> {teamData.meta.avg_rating}</div>
+              <div><strong>Avg Stars:</strong> {teamData.meta.avg_stars}</div>
+              <div><strong>Commits:</strong> {teamData.meta.commits}</div>
+            </div>
+          </div>
+        )}
+
+        {teamData.recruits && teamData.recruits.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ color: teamColors.primary }}>Original Recruits</h3>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            }}>
+              <thead>
+                <tr style={{ backgroundColor: teamColors.primary, color: teamColors.accent }}>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>#</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Pos</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Stars</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Outcome</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <em>Loading teams...</em>}
+              </thead>
+              <tbody>
+                {teamData.recruits.map((r, index) => (
+                  <tr key={r.id} style={{ 
+                    backgroundColor: index % 2 === 0 ? teamColors.secondaryLight : teamColors.secondary,
+                    color: teamColors.primaryDark
+                  }}>
+                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{r.rank}</td>
+                    <td style={{ padding: '12px' }}>{r.name}</td>
+                    <td style={{ padding: '12px' }}>{r.position}</td>
+                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{r.stars}</td>
+                    <td style={{ padding: '12px' }}>
+                      <span style={{
+                        backgroundColor: r.outcome ? teamColors.primary : '#ccc',
+                        color: r.outcome ? teamColors.accent : '#666',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                      }}>
+                        {r.outcome || 'Not Assigned'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {teamData.rerank_meta && (
+          <div style={{ 
+            backgroundColor: teamColors.primaryBg,
+            padding: '16px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            border: `1px solid ${teamColors.primaryLight}`
+          }}>
+            <h3 style={{ color: teamColors.primary, marginTop: 0 }}>ReRank Results</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              <div><strong>National Rank:</strong> {teamData.rerank_meta.rank || 'N/A'}</div>
+              <div><strong>Total Points:</strong> {teamData.rerank_meta.total_points}</div>
+              <div><strong>Avg Points:</strong> {teamData.rerank_meta.avg_points}</div>
+              <div><strong>Commits:</strong> {teamData.rerank_meta.commits || 'N/A'}</div>
+            </div>
+            
+            {teamData.rerank_players && teamData.rerank_players.length > 0 && (
+              <div>
+                <h4 style={{ color: teamColors.primary }}>Final Rankings</h4>
+                <table style={{ 
+                  width: '100%', 
+                  borderCollapse: 'collapse',
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}>
+                  <thead>
+                    <tr style={{ backgroundColor: teamColors.primary, color: teamColors.accent }}>
+                      <th style={{ padding: '12px', textAlign: 'left' }}>Rank</th>
+                      <th style={{ padding: '12px', textAlign: 'left' }}>Player</th>
+                      <th style={{ padding: '12px', textAlign: 'left' }}>Points</th>
+                      <th style={{ padding: '12px', textAlign: 'left' }}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamData.rerank_players.map((p, index) => (
+                      <tr key={index} style={{ 
+                        backgroundColor: index % 2 === 0 ? teamColors.secondaryLight : teamColors.secondary,
+                        color: teamColors.primaryDark
+                      }}>
+                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{index + 1}</td>
+                        <td style={{ padding: '12px' }}>{p.name}</td>
+                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{p.points}</td>
+                        <td style={{ padding: '12px' }}>{p.note || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!teamData.meta && !teamData.recruits && !teamData.rerank_meta && (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '40px',
+            color: teamColors.primaryDark
+          }}>
+            <h3>No data available for {team} in {year}</h3>
+            <p>This team hasn't been imported or reranked yet.</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -601,11 +894,12 @@ function App() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
       <h1>Stars to Stats</h1>
-      <Nav />
+      {isAuthed && <Nav />}
       
       {route.startsWith('#/leaderboard') && <LeaderboardPage />}
-      {route.startsWith('#/rerank') && <RerankPage />}
-      {route.startsWith('#/admin') && <AdminPage auth={{ headers }} />}
+      {route.startsWith('#/team/') && <TeamPage />}
+      {route.startsWith('#/rerank') && isAuthed && <RerankPage />}
+      {route.startsWith('#/admin') && isAuthed && <AdminPage auth={{ headers }} />}
       {route.startsWith('#/auth') && <AuthPage onToken={setToken} />}
       
       {!route.startsWith('#/') && <LeaderboardPage />}
