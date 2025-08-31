@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
 
 // Simple test to see what's happening
 console.log('API_BASE:', API_BASE)
