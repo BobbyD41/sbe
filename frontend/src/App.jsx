@@ -70,7 +70,11 @@ function AuthPage({ onToken }) {
     const data = await res.json()
     if (!res.ok) { setMsg(data.detail || 'error'); return }
     onToken(data.access_token)
-    setMsg('ok')
+    setMsg('Login successful!')
+    // Redirect to rerank page after successful login
+    setTimeout(() => {
+      window.location.hash = '#/rerank'
+    }, 1000)
   }
   
   function logout() {
@@ -885,6 +889,53 @@ function TeamPage() {
                   textDecoration: 'none',
                   fontWeight: 'bold',
                   display: 'inline-block'
+                }}
+              >
+                Go to ReRank Page
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Show action buttons for teams with original data but no rerank */}
+        {teamData.meta && teamData.recruits && !teamData.rerank_meta && (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '20px',
+            backgroundColor: teamColors.primaryBg,
+            borderRadius: '8px',
+            marginTop: '20px',
+            border: `1px solid ${teamColors.primaryLight}`
+          }}>
+            <h4 style={{ color: teamColors.primary, marginBottom: '10px' }}>Ready to ReRank?</h4>
+            <p style={{ color: '#000000', marginBottom: '15px' }}>
+              This team has original recruiting data but hasn't been reranked yet.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <a 
+                href="#/auth" 
+                style={{
+                  backgroundColor: teamColors.primary,
+                  color: teamColors.accent,
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  textDecoration: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
+                }}
+              >
+                Login to ReRank
+              </a>
+              <a 
+                href="#/rerank" 
+                style={{
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  textDecoration: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
                 }}
               >
                 Go to ReRank Page
