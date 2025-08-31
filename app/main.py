@@ -362,45 +362,7 @@ async def rerank_meta(year: int, team: str, db: Session = Depends(get_db)):
         "commits": commits,
     }
 
-@app.get("/api/team/{year}/{team}")
-async def get_team_data(year: int, team: str, db: Session = Depends(get_db)):
-    team = normalize_team_name(team)
-    
-    # Get original class meta
-    meta = None
-    try:
-        meta = await class_meta(year=year, team=team, db=db)
-    except HTTPException:
-        pass
-    
-    # Get recruits
-    recruits = []
-    try:
-        recruits = await list_recruits(year=year, team=team, db=db)
-    except HTTPException:
-        pass
-    
-    # Get rerank data
-    rerank_meta_data = None
-    rerank_players = []
-    try:
-        rerank_meta_data = await rerank_meta(year=year, team=team, db=db)
-        if rerank_meta_data:
-            try:
-                rerank_players = await list_rerank_players(class_id=rerank_meta_data["class_id"], db=db)
-            except HTTPException:
-                pass
-    except HTTPException:
-        pass
-    
-    return {
-        "year": year,
-        "team": team,
-        "meta": meta,
-        "recruits": recruits,
-        "rerank_meta": rerank_meta_data,
-        "rerank_players": rerank_players
-    }
+
 
 @app.post("/api/recruits/outcomes")
 async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = Depends(get_db)):
