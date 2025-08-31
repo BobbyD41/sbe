@@ -3,7 +3,8 @@ import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
 
 // Use environment variable if set, otherwise default to /api (like localhost)
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+// Ensure it always ends with /api for consistency
+const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '') + '/api'
 
 // Debug logging
 console.log('=== DEBUG INFO ===')
