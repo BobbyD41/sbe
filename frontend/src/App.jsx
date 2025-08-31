@@ -322,7 +322,10 @@ function RerankPage() {
 
       const saveRes = await fetch(`${API_BASE}/recruits/outcomes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ 
           year: Number(year), 
           team, 
@@ -331,16 +334,19 @@ function RerankPage() {
       })
 
       if (!saveRes.ok) {
-        throw new Error('Failed to save outcomes')
+        const errorText = await saveRes.text()
+        throw new Error(`Failed to save outcomes: ${errorText}`)
       }
 
-      // Recalculate rerank
+      // Recalculate rerank with authentication
       const recalcRes = await fetch(`${API_BASE}/recruits/recalc/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       })
 
       if (!recalcRes.ok) {
-        throw new Error('Failed to recalculate rerank')
+        const errorText = await recalcRes.text()
+        throw new Error(`Failed to recalculate rerank: ${errorText}`)
       }
 
       // Reload data to show updated results
