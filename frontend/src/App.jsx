@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { getTeamColors, TEAM_COLORS } from './teamColors'
 
-const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
+// Use environment variable if set, otherwise default to /api (like localhost)
+const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
 const OUTCOMES = [
   'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
