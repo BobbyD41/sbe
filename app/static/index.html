@@ -131,8 +131,14 @@
         currentData = data;
         currentYear = parseInt(year);
         
-        el.innerHTML = renderLeaderboard(data);
-        wireSorting(data);
+        // Ensure teams are sorted by total_points (highest first) by default
+        const sortedData = {
+          ...data,
+          rows: data.rows.sort((a, b) => b.total_points - a.total_points)
+        };
+        
+        el.innerHTML = renderLeaderboard(sortedData);
+        wireSorting(sortedData);
       } catch (error) {
         el.innerHTML = `<div class="error">Error loading leaderboard: ${error.message}</div>`;
       }
