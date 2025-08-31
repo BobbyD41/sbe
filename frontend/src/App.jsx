@@ -5,6 +5,12 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 // Use environment variable if set, otherwise default to /api (like localhost)
 const API_BASE = import.meta.env.VITE_API_BASE || '/api'
 
+// Debug logging
+console.log('=== DEBUG INFO ===')
+console.log('import.meta.env.VITE_API_BASE:', import.meta.env.VITE_API_BASE)
+console.log('API_BASE:', API_BASE)
+console.log('==================')
+
 const OUTCOMES = [
   'Left Team/Little Contribution/Bust','4 Year Contributor','College Starter','All Conference','All American',
   'Undrafted but made NFL Roster','NFL Drafted','NFL Starter','NFL Pro Bowl'
