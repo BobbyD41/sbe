@@ -264,29 +264,65 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
 
 @app.get("/api/leaderboard/rerank/{year}")
 async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
-    # Latest snapshot per normalized team name for the year
+    # Get all teams that have been imported (have recruits or rerank data)
+    # First get teams with rerank data
     classes = db.query(models.RerankClass).filter(models.RerankClass.year == year).order_by(models.RerankClass.created_at.desc()).all()
     latest_by_team: Dict[str, models.RerankClass] = {}
     for rc in classes:
         key = normalize_team_name(rc.team)
         if key not in latest_by_team:
             latest_by_team[key] = rc
-    # Build rows with commits count
+    
+    # Also get teams that have recruits but no rerank data yet
+    recruit_teams = db.query(models.Recruit.team).filter(models.Recruit.year == year).distinct().all()
+    for (team_name,) in recruit_teams:
+        key = normalize_team_name(team_name)
+        if key not in latest_by_team:
+            # Create a placeholder entry for teams with recruits but no rerank
+            latest_by_team[key] = None
+    
+    # Build rows
     rows = []
     for team_name, rc in latest_by_team.items():
-        commits = db.query(models.RerankPlayer).filter(models.RerankPlayer.class_id == rc.id).count()
-        rows.append({
-            "team": normalize_team_name(team_name),
-            "year": rc.year,
-            "class_id": rc.id,
-            "total_points": rc.total_points,
-            "avg_points": rc.avg_points,
-            "commits": commits,
-        })
-    rows.sort(key=lambda r: r["total_points"], reverse=True)
-    # Assign ranks (1-based, ties share same rank positionally)
+        if rc:
+            # Team has rerank data
+            commits = db.query(models.RerankPlayer).filter(models.RerankPlayer.class_id == rc.id).count()
+            rows.append({
+                "team": normalize_team_name(team_name),
+                "year": rc.year,
+                "class_id": rc.id,
+                "total_points": rc.total_points,
+                "avg_points": rc.avg_points,
+                "commits": commits,
+                "has_rerank": True
+            })
+        else:
+            # Team has recruits but no rerank data
+            recruit_count = db.query(models.Recruit).filter(
+                models.Recruit.year == year, 
+                models.Recruit.team == team_name
+            ).count()
+            rows.append({
+                "team": normalize_team_name(team_name),
+                "year": year,
+                "class_id": None,
+                "total_points": 0,
+                "avg_points": 0,
+                "commits": recruit_count,
+                "has_rerank": False
+            })
+    
+    # Sort by: 1) Has rerank data (points > 0), 2) Number of commits, 3) Alphabetical
+    rows.sort(key=lambda r: (
+        not r["has_rerank"],  # Teams with rerank data first
+        -r["commits"],        # Then by commits (descending)
+        r["team"]             # Then alphabetically
+    ))
+    
+    # Assign ranks
     for idx, r in enumerate(rows, start=1):
         r["rank"] = idx
+    
     return {"year": year, "count": len(rows), "rows": rows}
 
 @app.get("/api/rerank/meta")
