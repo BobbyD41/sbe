@@ -23,4 +23,4 @@ Features:
 - Leaderboard: View team rankings by year
 - ReRank: Analyze individual team recruiting classes
 - Team pages: Click on team names to view detailed class breakdowns
-- Data import: Import recruiting data from College Football Data API
+- Data import: Import recruiting data from College Football Data API# Force Railway redeploy - Sun Aug 31 06:56:17 CDT 2025
