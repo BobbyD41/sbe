@@ -368,38 +368,30 @@ async def get_team_data(year: int, team: str, db: Session = Depends(get_db)):
     
     # Get original class meta
     meta = None
+    try:
+        meta = await class_meta(year=year, team=team, db=db)
+    except HTTPException:
+        pass
+    
+    # Get recruits
     recruits = []
+    try:
+        recruits = await list_recruits(year=year, team=team, db=db)
+    except HTTPException:
+        pass
+    
+    # Get rerank data
     rerank_meta = None
     rerank_players = []
-    
-    # Try to get original class data
     try:
-        meta_response = await class_meta(year=year, team=team, db=db)
-        meta = meta_response
+        rerank_meta = await rerank_meta(year=year, team=team, db=db)
+        if rerank_meta:
+            try:
+                rerank_players = await list_rerank_players(class_id=rerank_meta["class_id"], db=db)
+            except HTTPException:
+                pass
     except HTTPException:
         pass
-    
-    # Try to get recruits
-    try:
-        recruits_response = await list_recruits(year=year, team=team, db=db)
-        recruits = recruits_response
-    except HTTPException:
-        pass
-    
-    # Try to get rerank data
-    try:
-        rerank_meta_response = await rerank_meta(year=year, team=team, db=db)
-        rerank_meta = rerank_meta_response
-    except HTTPException:
-        pass
-    
-    # Get rerank players if we have rerank data
-    if rerank_meta:
-        try:
-            players_response = await list_rerank_players(class_id=rerank_meta["class_id"], db=db)
-            rerank_players = players_response
-        except HTTPException:
-            pass
     
     return {
         "year": year,
