@@ -29,7 +29,21 @@ function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const isAuthed = !!token
   const headers = useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token])
-  return { token, setToken, isAuthed, headers }
+  
+  // Debug logging
+  console.log('useAuth state:', { token: token ? 'present' : 'missing', isAuthed, hasHeaders: !!Object.keys(headers).length })
+  
+  const setTokenWithStorage = (newToken) => {
+    console.log('Setting token:', newToken ? 'present' : 'missing')
+    if (newToken) {
+      localStorage.setItem('token', newToken)
+    } else {
+      localStorage.removeItem('token')
+    }
+    setToken(newToken)
+  }
+  
+  return { token, setToken: setTokenWithStorage, isAuthed, headers }
 }
 
 function Nav() {
@@ -66,15 +80,38 @@ function AuthPage({ onToken }) {
   
   async function submit(path) {
     setMsg('...')
-    const res = await fetch(`${API_BASE}/auth/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
-    const data = await res.json()
-    if (!res.ok) { setMsg(data.detail || 'error'); return }
-    onToken(data.access_token)
-    setMsg('Login successful!')
-    // Redirect to rerank page after successful login
-    setTimeout(() => {
-      window.location.hash = '#/rerank'
-    }, 1000)
+    console.log(`Attempting ${path} with:`, { email, password })
+    console.log('API_BASE:', API_BASE)
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/${path}`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ email, password }) 
+      })
+      console.log('Auth response status:', res.status)
+      
+      const data = await res.json()
+      console.log('Auth response data:', data)
+      
+      if (!res.ok) { 
+        setMsg(data.detail || 'error'); 
+        console.log('Auth failed:', data.detail || 'error')
+        return 
+      }
+      
+      console.log('Auth successful, setting token:', data.access_token)
+      onToken(data.access_token)
+      setMsg('Login successful!')
+      // Redirect to rerank page after successful login
+      setTimeout(() => {
+        console.log('Redirecting to rerank page')
+        window.location.hash = '#/rerank'
+      }, 1000)
+    } catch (error) {
+      console.error('Auth request error:', error)
+      setMsg('Network error: ' + error.message)
+    }
   }
   
   function logout() {
@@ -628,51 +665,76 @@ function TeamPage() {
         rerank_players: []
       }
 
+      console.log(`Loading team data for ${team} in ${year}`)
+
       // Load class meta
       try {
-        const metaRes = await fetch(`${API_BASE}/class/meta?year=${year}&team=${encodeURIComponent(team)}`)
+        const metaUrl = `${API_BASE}/class/meta?year=${year}&team=${encodeURIComponent(team)}`
+        console.log('Fetching meta from:', metaUrl)
+        const metaRes = await fetch(metaUrl)
+        console.log('Meta response status:', metaRes.status)
         if (metaRes.ok) {
           teamData.meta = await metaRes.json()
+          console.log('Meta data loaded:', teamData.meta)
+        } else {
+          console.log('Meta request failed:', metaRes.status, metaRes.statusText)
         }
       } catch (error) {
-        console.log('No class meta available')
+        console.log('Meta request error:', error)
       }
 
       // Load recruits
       try {
-        const recruitsRes = await fetch(`${API_BASE}/recruits/${year}/${encodeURIComponent(team)}`)
+        const recruitsUrl = `${API_BASE}/recruits/${year}/${encodeURIComponent(team)}`
+        console.log('Fetching recruits from:', recruitsUrl)
+        const recruitsRes = await fetch(recruitsUrl)
+        console.log('Recruits response status:', recruitsRes.status)
         if (recruitsRes.ok) {
           teamData.recruits = await recruitsRes.json()
+          console.log('Recruits data loaded:', teamData.recruits.length, 'recruits')
+        } else {
+          console.log('Recruits request failed:', recruitsRes.status, recruitsRes.statusText)
         }
       } catch (error) {
-        console.log('No recruits available')
+        console.log('Recruits request error:', error)
       }
 
       // Load rerank meta
       try {
-        const rerankMetaRes = await fetch(`${API_BASE}/rerank/meta?year=${year}&team=${encodeURIComponent(team)}`)
+        const rerankMetaUrl = `${API_BASE}/rerank/meta?year=${year}&team=${encodeURIComponent(team)}`
+        console.log('Fetching rerank meta from:', rerankMetaUrl)
+        const rerankMetaRes = await fetch(rerankMetaUrl)
+        console.log('Rerank meta response status:', rerankMetaRes.status)
         if (rerankMetaRes.ok) {
           teamData.rerank_meta = await rerankMetaRes.json()
+          console.log('Rerank meta loaded:', teamData.rerank_meta)
           
           // Load rerank players if we have rerank data
           if (teamData.rerank_meta.class_id) {
             try {
-              const playersRes = await fetch(`${API_BASE}/admin/classes/${teamData.rerank_meta.class_id}`)
+              const playersUrl = `${API_BASE}/admin/classes/${teamData.rerank_meta.class_id}`
+              console.log('Fetching rerank players from:', playersUrl)
+              const playersRes = await fetch(playersUrl)
               if (playersRes.ok) {
                 const classData = await playersRes.json()
                 teamData.rerank_players = (classData.players || []).sort((a, b) => b.points - a.points)
+                console.log('Rerank players loaded:', teamData.rerank_players.length, 'players')
               }
             } catch (error) {
-              console.log('No rerank players available')
+              console.log('Rerank players request error:', error)
             }
           }
+        } else {
+          console.log('Rerank meta request failed:', rerankMetaRes.status, rerankMetaRes.statusText)
         }
       } catch (error) {
-        console.log('No rerank meta available')
+        console.log('Rerank meta request error:', error)
       }
 
+      console.log('Final team data:', teamData)
       setTeamData(teamData)
     } catch (error) {
+      console.error('Error loading team data:', error)
       alert(`Error loading team data: ${error.message}`)
     } finally {
       setBusy(false)
