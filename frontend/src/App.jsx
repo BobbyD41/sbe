@@ -161,7 +161,7 @@ function AuthPage({ onToken }) {
 }
 
 function RerankPage() {
-  const { isAuthed } = useAuth()
+  const { isAuthed, headers } = useAuth()
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [busy, setBusy] = useState(false)
@@ -170,6 +170,18 @@ function RerankPage() {
   const [rerank, setRerank] = useState(null)
   const [rerankPlayers, setRerankPlayers] = useState([])
   const [message, setMessage] = useState('')
+  
+  // New state for adding recruits
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newRecruit, setNewRecruit] = useState({
+    name: '',
+    position: '',
+    stars: 0,
+    rank: 0,
+    outcome: '',
+    points: 0,
+    note: ''
+  })
 
   if (!isAuthed) {
     return (
@@ -209,10 +221,17 @@ function RerankPage() {
       setMeta(await metaRes.json())
     }
 
-    // Load recruits
+    // Load recruits (using basic endpoint for now)
     const recruitsRes = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
     if (recruitsRes.ok) {
-      setRecruits(await recruitsRes.json())
+      const recruitsData = await recruitsRes.json()
+      // Add metadata to recruits for frontend display
+      const recruitsWithMeta = recruitsData.map(r => ({
+        ...r,
+        is_manual: r.source === 'manual',
+        can_delete: r.source === 'manual'
+      }))
+      setRecruits(recruitsWithMeta)
     } else {
       setRecruits([])
     }
@@ -296,6 +315,76 @@ function RerankPage() {
     setRecruits(recruits.map(r => r.id === id ? { ...r, outcome } : r))
   }
 
+  async function addRecruit() {
+    if (!newRecruit.name.trim()) {
+      setMessage('Please enter a name for the recruit')
+      return
+    }
+
+    setBusy(true)
+    setMessage('Adding recruit...')
+
+    try {
+      // For now, we'll add the recruit to the local state since the backend endpoint isn't ready
+      const newRecruitWithId = {
+        id: Date.now(), // Temporary ID
+        name: newRecruit.name.trim(),
+        position: newRecruit.position.trim(),
+        stars: Number(newRecruit.stars) || 0,
+        rank: Number(newRecruit.rank) || 0,
+        outcome: newRecruit.outcome,
+        points: Number(newRecruit.points) || 0,
+        note: newRecruit.note.trim(),
+        source: 'manual',
+        is_manual: true,
+        can_delete: true
+      }
+
+      // Add to local state
+      setRecruits([...recruits, newRecruitWithId])
+
+      // Reset form
+      setNewRecruit({
+        name: '',
+        position: '',
+        stars: 0,
+        rank: 0,
+        outcome: '',
+        points: 0,
+        note: ''
+      })
+      setShowAddForm(false)
+      
+      setMessage('Recruit added successfully! (Note: Backend endpoint not yet deployed)')
+      setTimeout(() => setMessage(''), 3000)
+    } catch (error) {
+      setMessage(`Error: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deleteRecruit(recruitId) {
+    if (!confirm('Are you sure you want to delete this recruit?')) {
+      return
+    }
+
+    setBusy(true)
+    setMessage('Deleting recruit...')
+
+    try {
+      // Remove from local state
+      setRecruits(recruits.filter(r => r.id !== recruitId))
+      
+      setMessage('Recruit deleted successfully! (Note: Backend endpoint not yet deployed)')
+      setTimeout(() => setMessage(''), 3000)
+    } catch (error) {
+      setMessage(`Error: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function saveAndRerank() {
     if (!recruits || recruits.length === 0) {
       setMessage('No recruits to save')
@@ -306,8 +395,11 @@ function RerankPage() {
     setMessage('Saving outcomes and calculating rerank...')
 
     try {
-      // Save outcomes
-      const updates = recruits
+      // Filter out manually added recruits for now (since backend endpoint isn't ready)
+      const originalRecruits = recruits.filter(r => !r.is_manual)
+      
+      // Save outcomes for original recruits
+      const updates = originalRecruits
         .filter(r => r.outcome && OUTCOMES.includes(r.outcome))
         .map(r => ({ 
           id: r.id, 
@@ -352,7 +444,7 @@ function RerankPage() {
       // Reload data to show updated results
       await loadClassData()
       
-      setMessage('Outcomes saved and rerank calculated successfully!')
+      setMessage('Outcomes saved and rerank calculated successfully! (Note: Manually added recruits not yet saved to backend)')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {
       setMessage(`Error: ${error.message}`)
@@ -417,7 +509,125 @@ function RerankPage() {
       )}
 
       <div style={{ marginTop: 12 }}>
-        <h3 style={{ color: getTeamColors(team).primary }}>Original Recruits (edit outcomes, then Save & ReRank)</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h3 style={{ color: getTeamColors(team).primary, margin: 0 }}>
+            Recruits ({recruits.length} total - {recruits.filter(r => r.is_manual).length} manually added)
+          </h3>
+          <button 
+            onClick={() => setShowAddForm(!showAddForm)}
+            style={{
+              backgroundColor: getTeamColors(team).primary,
+              color: getTeamColors(team).accent,
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            {showAddForm ? '✕ Cancel' : '➕ Add Recruit'}
+          </button>
+        </div>
+
+        {/* Add Recruit Form */}
+        {showAddForm && (
+          <div style={{
+            backgroundColor: getTeamColors(team).secondaryLight,
+            padding: '16px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            border: `1px solid ${getTeamColors(team).primaryLight}`
+          }}>
+            <h4 style={{ color: getTeamColors(team).primary, marginTop: 0 }}>Add New Recruit</h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              <input
+                placeholder="Name *"
+                value={newRecruit.name}
+                onChange={e => setNewRecruit({...newRecruit, name: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input
+                placeholder="Position"
+                value={newRecruit.position}
+                onChange={e => setNewRecruit({...newRecruit, position: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input
+                type="number"
+                placeholder="Stars"
+                value={newRecruit.stars}
+                onChange={e => setNewRecruit({...newRecruit, stars: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <input
+                type="number"
+                placeholder="Rank"
+                value={newRecruit.rank}
+                onChange={e => setNewRecruit({...newRecruit, rank: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+              <select
+                value={newRecruit.outcome}
+                onChange={e => setNewRecruit({...newRecruit, outcome: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              >
+                <option value="">Select outcome...</option>
+                {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+              <input
+                type="number"
+                placeholder="Points"
+                value={newRecruit.points}
+                onChange={e => setNewRecruit({...newRecruit, points: e.target.value})}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+              />
+            </div>
+            <textarea
+              placeholder="Notes (optional)"
+              value={newRecruit.note}
+              onChange={e => setNewRecruit({...newRecruit, note: e.target.value})}
+              style={{ 
+                width: '100%', 
+                padding: '8px', 
+                borderRadius: '4px', 
+                border: '1px solid #ccc',
+                marginTop: '12px',
+                minHeight: '60px',
+                resize: 'vertical'
+              }}
+            />
+            <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={addRecruit}
+                disabled={busy}
+                style={{
+                  backgroundColor: getTeamColors(team).primary,
+                  color: getTeamColors(team).accent,
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  opacity: busy ? 0.6 : 1
+                }}
+              >
+                Add Recruit
+              </button>
+              <button 
+                onClick={() => setShowAddForm(false)}
+                style={{
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           {recruits.length ? (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -428,16 +638,22 @@ function RerankPage() {
                   <th style={{ padding: '8px', textAlign: 'left' }}>Pos</th>
                   <th style={{ padding: '8px', textAlign: 'left' }}>Stars</th>
                   <th style={{ padding: '8px', textAlign: 'left' }}>Outcome</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Source</th>
+                  <th style={{ padding: '8px', textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {recruits.map((r, index) => (
                   <tr key={r.id} style={{ 
                     backgroundColor: index % 2 === 0 ? getTeamColors(team).secondaryLight : getTeamColors(team).secondary,
-                    color: getTeamColors(team).primaryDark
+                    color: getTeamColors(team).primaryDark,
+                    borderLeft: r.is_manual ? `4px solid ${getTeamColors(team).primary}` : 'none'
                   }}>
                     <td style={{ padding: '8px', fontWeight: 'bold' }}>{r.rank}</td>
-                    <td style={{ padding: '8px' }}>{r.name}</td>
+                    <td style={{ padding: '8px' }}>
+                      {r.name}
+                      {r.is_manual && <span style={{ fontSize: '12px', color: getTeamColors(team).primary, marginLeft: '8px' }}>📝</span>}
+                    </td>
                     <td style={{ padding: '8px' }}>{r.position}</td>
                     <td style={{ padding: '8px', fontWeight: 'bold' }}>{r.stars}</td>
                     <td style={{ padding: '8px' }}>
@@ -455,6 +671,28 @@ function RerankPage() {
                         <option value=''>Select outcome…</option>
                         {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
                       </select>
+                    </td>
+                    <td style={{ padding: '8px', fontSize: '12px' }}>
+                      {r.is_manual ? 'Manual' : 'API'}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      {r.can_delete && (
+                        <button
+                          onClick={() => deleteRecruit(r.id)}
+                          disabled={busy}
+                          style={{
+                            backgroundColor: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            cursor: busy ? 'not-allowed' : 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

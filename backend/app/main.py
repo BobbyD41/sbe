@@ -1,3 +1,4 @@
+# Force Railway redeploy - Sun Aug 31 06:56:17 CDT 2025
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -74,6 +75,16 @@ def get_db():
 async def root():
     return {"message": "Stars to Stats - ReRank API", "status": "running"}
 
+@app.get("/api/outcomes")
+async def get_outcomes():
+    """Get the available outcomes and their point values"""
+    return {
+        "outcomes": [
+            {"outcome": outcome, "points": points} 
+            for outcome, points in OUTCOME_POINTS.items()
+        ],
+        "total_outcomes": len(OUTCOME_POINTS)
+    }
 
 # Auth helpers
 def get_current_user_db(db: Session, authorization: Optional[str]) -> Optional[models.User]:
@@ -118,6 +129,29 @@ class RecruitOutcomePayload(BaseModel):
     year: int
     team: str
     updates: List[RecruitOutcomeUpdate]
+
+class AddRecruitPayload(BaseModel):
+    year: int
+    team: str
+    name: str
+    position: str = ""
+    stars: int = 0
+    rank: int = 0
+    outcome: str = ""
+    points: int = 0
+    note: str = ""
+    source: str = "manual"
+
+class UpdateRecruitPayload(BaseModel):
+    id: int
+    name: str = ""
+    position: str = ""
+    stars: int = 0
+    rank: int = 0
+    outcome: str = ""
+    points: int = 0
+    note: str = ""
+    source: str = ""
 
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -233,6 +267,45 @@ async def list_recruits(year: int, team: str, db: Session = Depends(get_db)):
         "note": r.note,
         "source": r.source,
     } for r in rows]
+
+@app.get("/api/recruits/{year}/{team}/detailed")
+async def list_recruits_detailed(year: int, team: str, db: Session = Depends(get_db)):
+    team = normalize_team_name(team)
+    rows = db.query(models.Recruit).filter(models.Recruit.year == year, models.Recruit.team == team).order_by(models.Recruit.rank.asc()).all()
+    
+    # Get rerank data if available
+    rerank_meta_data = None
+    try:
+        rerank_meta_data = await rerank_meta(year=year, team=team, db=db)
+    except HTTPException:
+        pass
+    
+    recruits = []
+    for r in rows:
+        recruit_data = {
+            "id": r.id,
+            "name": r.name,
+            "position": r.position,
+            "stars": r.stars,
+            "rank": r.rank,
+            "outcome": r.outcome,
+            "points": r.points,
+            "note": r.note,
+            "source": r.source,
+            "is_manual": r.source == "manual",
+            "can_delete": r.source == "manual",  # Only manually added recruits can be deleted
+        }
+        recruits.append(recruit_data)
+    
+    return {
+        "year": year,
+        "team": team,
+        "recruits": recruits,
+        "total_recruits": len(recruits),
+        "manual_recruits": len([r for r in recruits if r["is_manual"]]),
+        "api_recruits": len([r for r in recruits if not r["is_manual"]]),
+        "rerank_meta": rerank_meta_data,
+    }
 
 @app.post("/api/recruits/recalc/{year}/{team}")
 async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depends(get_db)):
@@ -419,6 +492,161 @@ async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = 
         changed += 1
     db.commit()
     return {"ok": True, "updated": changed}
+
+@app.post("/api/recruits/add")
+async def add_recruit(
+    payload: AddRecruitPayload, 
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    team = normalize_team_name(payload.team)
+    
+    # Check if recruit already exists
+    existing = db.query(models.Recruit).filter(
+        models.Recruit.year == payload.year,
+        models.Recruit.team == team,
+        models.Recruit.name == payload.name.strip()
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=409, detail="Recruit already exists")
+    
+    # Create new recruit
+    recruit = models.Recruit(
+        year=payload.year,
+        team=team,
+        name=payload.name.strip(),
+        position=payload.position.strip(),
+        stars=payload.stars,
+        rank=payload.rank,
+        outcome=payload.outcome.strip(),
+        points=payload.points,
+        note=payload.note.strip(),
+        source=payload.source.strip(),
+    )
+    
+    db.add(recruit)
+    db.commit()
+    db.refresh(recruit)
+    
+    # Auto-recalculate rerank after adding recruit
+    try:
+        await recalc_rerank_from_recruits(payload.year, team, db)
+    except Exception as e:
+        # Log error but don't fail the add operation
+        print(f"Auto-recalc failed after adding recruit: {e}")
+    
+    return {
+        "ok": True, 
+        "recruit": {
+            "id": recruit.id,
+            "name": recruit.name,
+            "position": recruit.position,
+            "stars": recruit.stars,
+            "rank": recruit.rank,
+            "outcome": recruit.outcome,
+            "points": recruit.points,
+            "note": recruit.note,
+            "source": recruit.source,
+        }
+    }
+
+@app.put("/api/recruits/{recruit_id}")
+async def update_recruit(
+    recruit_id: int,
+    payload: UpdateRecruitPayload,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Get existing recruit
+    recruit = db.get(models.Recruit, recruit_id)
+    if not recruit:
+        raise HTTPException(status_code=404, detail="Recruit not found")
+    
+    # Update fields if provided
+    if payload.name:
+        recruit.name = payload.name.strip()
+    if payload.position:
+        recruit.position = payload.position.strip()
+    if payload.stars >= 0:
+        recruit.stars = payload.stars
+    if payload.rank >= 0:
+        recruit.rank = payload.rank
+    if payload.outcome:
+        recruit.outcome = payload.outcome.strip()
+    if payload.points >= 0:
+        recruit.points = payload.points
+    if payload.note:
+        recruit.note = payload.note.strip()
+    if payload.source:
+        recruit.source = payload.source.strip()
+    
+    db.commit()
+    db.refresh(recruit)
+    
+    # Auto-recalculate rerank after updating recruit
+    try:
+        await recalc_rerank_from_recruits(recruit.year, recruit.team, db)
+    except Exception as e:
+        # Log error but don't fail the update operation
+        print(f"Auto-recalc failed after updating recruit: {e}")
+    
+    return {
+        "ok": True,
+        "recruit": {
+            "id": recruit.id,
+            "name": recruit.name,
+            "position": recruit.position,
+            "stars": recruit.stars,
+            "rank": recruit.rank,
+            "outcome": recruit.outcome,
+            "points": recruit.points,
+            "note": recruit.note,
+            "source": recruit.source,
+        }
+    }
+
+@app.delete("/api/recruits/{recruit_id}")
+async def delete_recruit(
+    recruit_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Get existing recruit
+    recruit = db.get(models.Recruit, recruit_id)
+    if not recruit:
+        raise HTTPException(status_code=404, detail="Recruit not found")
+    
+    # Only allow deletion of manually added recruits
+    if recruit.source != "manual":
+        raise HTTPException(status_code=403, detail="Can only delete manually added recruits")
+    
+    db.delete(recruit)
+    db.commit()
+    
+    # Auto-recalculate rerank after deleting recruit
+    try:
+        await recalc_rerank_from_recruits(recruit.year, recruit.team, db)
+    except Exception as e:
+        # Log error but don't fail the delete operation
+        print(f"Auto-recalc failed after deleting recruit: {e}")
+    
+    return {"ok": True, "deleted": recruit_id}
 
 @app.post("/api/import/cfbd/{year}/{team}")
 async def import_cfbd(year: int, team: str, db: Session = Depends(get_db)):
