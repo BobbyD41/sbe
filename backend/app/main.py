@@ -1,3 +1,4 @@
+# Force Railway redeploy - Sun Aug 31 06:56:17 CDT 2025
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
