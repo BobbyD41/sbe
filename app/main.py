@@ -381,13 +381,13 @@ async def get_team_data(year: int, team: str, db: Session = Depends(get_db)):
         pass
     
     # Get rerank data
-    rerank_meta = None
+    rerank_meta_data = None
     rerank_players = []
     try:
-        rerank_meta = await rerank_meta(year=year, team=team, db=db)
-        if rerank_meta:
+        rerank_meta_data = await rerank_meta(year=year, team=team, db=db)
+        if rerank_meta_data:
             try:
-                rerank_players = await list_rerank_players(class_id=rerank_meta["class_id"], db=db)
+                rerank_players = await list_rerank_players(class_id=rerank_meta_data["class_id"], db=db)
             except HTTPException:
                 pass
     except HTTPException:
@@ -398,7 +398,7 @@ async def get_team_data(year: int, team: str, db: Session = Depends(get_db)):
         "team": team,
         "meta": meta,
         "recruits": recruits,
-        "rerank_meta": rerank_meta,
+        "rerank_meta": rerank_meta_data,
         "rerank_players": rerank_players
     }
 
