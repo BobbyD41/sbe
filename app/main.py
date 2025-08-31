@@ -252,14 +252,30 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     if not rows:
         raise HTTPException(status_code=404, detail="No recruits for year/team")
     
-    # Filter to only include recruits with outcomes assigned (points > 0)
-    players_with_outcomes = [{"name": r.name, "points": int(r.points or 0), "note": r.note} for r in rows if r.points > 0]
+    # Include ALL recruits in the rerank, but only those with outcomes contribute points
+    all_players = []
+    total_points = 0
+    players_with_outcomes = 0
     
-    if not players_with_outcomes:
+    for r in rows:
+        points = int(r.points or 0)
+        if points > 0:
+            players_with_outcomes += 1
+            total_points += points
+        
+        # Use outcome as note, fallback to original note if no outcome
+        note = r.outcome if r.outcome else r.note
+        
+        all_players.append({
+            "name": r.name, 
+            "points": points, 
+            "note": note
+        })
+    
+    if players_with_outcomes == 0:
         raise HTTPException(status_code=400, detail="No recruits with outcomes assigned. Please assign outcomes to recruits before recalculating rerank.")
     
-    total = sum(p["points"] for p in players_with_outcomes)
-    avg = round(total / max(1, len(players_with_outcomes)), 2)
+    avg = round(total_points / max(1, len(all_players)), 2)
 
     # Enforce single snapshot per team/year: delete previous snapshots and players
     old_classes = db.query(models.RerankClass).filter(models.RerankClass.year == year, models.RerankClass.team == team).all()
@@ -269,15 +285,15 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     db.commit()
 
     # Persist new class snapshot
-    rc = models.RerankClass(year=year, team=team, total_points=total, avg_points=avg)
+    rc = models.RerankClass(year=year, team=team, total_points=total_points, avg_points=avg)
     db.add(rc)
     db.commit()
     db.refresh(rc)
-    for p in players_with_outcomes:
+    for p in all_players:
         db.add(models.RerankPlayer(class_id=rc.id, name=p["name"], points=p["points"], note=p["note"]))
     db.commit()
 
-    return {"ok": True, "class_id": rc.id, "total_points": total, "avg_points": avg, "players_count": len(players_with_outcomes)}
+    return {"ok": True, "class_id": rc.id, "total_points": total_points, "avg_points": avg, "players_count": len(all_players), "players_with_outcomes": players_with_outcomes}
 
 @app.get("/api/leaderboard/rerank/{year}")
 async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
