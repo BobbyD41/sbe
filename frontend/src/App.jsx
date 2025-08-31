@@ -44,7 +44,16 @@ function Nav() {
           <a href="#/admin">Admin</a>
         </>
       )}
-      <a href="#/auth">{isAuthed ? 'Logout' : 'Login'}</a>
+      <a href="#/auth" style={{ 
+        backgroundColor: isAuthed ? '#dc3545' : '#28a745',
+        color: 'white',
+        padding: '8px 16px',
+        borderRadius: '4px',
+        textDecoration: 'none',
+        fontWeight: 'bold'
+      }}>
+        {isAuthed ? 'Logout' : 'Login'}
+      </a>
     </nav>
   )
 }
@@ -94,6 +103,7 @@ function AuthPage({ onToken }) {
 }
 
 function RerankPage() {
+  const { isAuthed } = useAuth()
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [busy, setBusy] = useState(false)
@@ -102,6 +112,37 @@ function RerankPage() {
   const [rerank, setRerank] = useState(null)
   const [rerankPlayers, setRerankPlayers] = useState([])
   const [message, setMessage] = useState('')
+
+  if (!isAuthed) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '40px',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '12px',
+        border: '2px solid #dee2e6'
+      }}>
+        <h2 style={{ color: '#495057', marginBottom: '20px' }}>Authentication Required</h2>
+        <p style={{ color: '#6c757d', marginBottom: '20px' }}>
+          You need to be logged in to access the ReRank features.
+        </p>
+        <a 
+          href="#/auth" 
+          style={{
+            backgroundColor: '#007bff',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '6px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            display: 'inline-block'
+          }}
+        >
+          Login to Continue
+        </a>
+      </div>
+    )
+  }
 
   async function loadClassData() {
     // Load class meta
@@ -488,7 +529,7 @@ function LeaderboardPage() {
                   borderRadius: '8px',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  color: teamColors.primaryDark
+                  color: '#000000' // Ensure black text for visibility
                 }}
                 onMouseEnter={(e) => {
                   e.target.style.transform = 'scale(1.02)'
@@ -521,7 +562,7 @@ function LeaderboardPage() {
                   }}>
                     {row.team}
                   </div>
-                  <div style={{ fontSize: '14px', opacity: 0.8 }}>
+                  <div style={{ fontSize: '14px', color: '#333333' }}>
                     {row.has_rerank ? 
                       `${row.total_points} points • ${row.avg_points} avg • ${row.commits} commits` :
                       'No data available'
@@ -697,7 +738,7 @@ function TeamPage() {
             border: `1px solid ${teamColors.primaryLight}`
           }}>
             <h3 style={{ color: teamColors.primary, marginTop: 0 }}>Original Class (CFBD)</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', color: '#000000' }}>
               <div><strong>National Rank:</strong> {teamData.meta.national_rank}</div>
               <div><strong>Points:</strong> {teamData.meta.points}</div>
               <div><strong>Avg Rating:</strong> {teamData.meta.avg_rating}</div>
@@ -765,7 +806,7 @@ function TeamPage() {
             border: `1px solid ${teamColors.primaryLight}`
           }}>
             <h3 style={{ color: teamColors.primary, marginTop: 0 }}>ReRank Results</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', color: '#000000' }}>
               <div><strong>National Rank:</strong> {teamData.rerank_meta.rank || 'N/A'}</div>
               <div><strong>Total Points:</strong> {teamData.rerank_meta.total_points}</div>
               <div><strong>Avg Points:</strong> {teamData.rerank_meta.avg_points}</div>
@@ -814,10 +855,41 @@ function TeamPage() {
           <div style={{ 
             textAlign: 'center', 
             padding: '40px',
-            color: teamColors.primaryDark
+            color: '#000000'
           }}>
             <h3>No data available for {team} in {year}</h3>
             <p>This team hasn't been imported or reranked yet.</p>
+            <div style={{ marginTop: '20px' }}>
+              <a 
+                href="#/auth" 
+                style={{
+                  backgroundColor: teamColors.primary,
+                  color: teamColors.accent,
+                  padding: '12px 24px',
+                  borderRadius: '6px',
+                  textDecoration: 'none',
+                  fontWeight: 'bold',
+                  display: 'inline-block',
+                  marginRight: '10px'
+                }}
+              >
+                Login to ReRank
+              </a>
+              <a 
+                href="#/rerank" 
+                style={{
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  padding: '12px 24px',
+                  borderRadius: '6px',
+                  textDecoration: 'none',
+                  fontWeight: 'bold',
+                  display: 'inline-block'
+                }}
+              >
+                Go to ReRank Page
+              </a>
+            </div>
           </div>
         )}
       </div>
@@ -826,11 +898,43 @@ function TeamPage() {
 }
 
 function AdminPage({ auth }) {
+  const { isAuthed } = useAuth()
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [recruits, setRecruits] = useState([])
   const [csvText, setCsvText] = useState('')
   const [busy, setBusy] = useState(false)
+
+  if (!isAuthed) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '40px',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '12px',
+        border: '2px solid #dee2e6'
+      }}>
+        <h2 style={{ color: '#495057', marginBottom: '20px' }}>Authentication Required</h2>
+        <p style={{ color: '#6c757d', marginBottom: '20px' }}>
+          You need to be logged in to access the Admin features.
+        </p>
+        <a 
+          href="#/auth" 
+          style={{
+            backgroundColor: '#007bff',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '6px',
+            textDecoration: 'none',
+            fontWeight: 'bold',
+            display: 'inline-block'
+          }}
+        >
+          Login to Continue
+        </a>
+      </div>
+    )
+  }
 
   async function load() {
     const res = await fetch(`${API_BASE}/recruits/${encodeURIComponent(year)}/${encodeURIComponent(team)}`)
@@ -941,7 +1045,7 @@ function App() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
       <h1>Stars to Stats</h1>
-      {isAuthed && <Nav />}
+      <Nav />
       
       {route.startsWith('#/leaderboard') && <LeaderboardPage />}
       {route.startsWith('#/team/') && <TeamPage />}
