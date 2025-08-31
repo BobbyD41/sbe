@@ -685,4 +685,4 @@ async def dashboard_index():
     index_path = os.path.join(static_dir, "index.html")
     return FileResponse(index_path)
 
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")# Updated Sun Aug 31 07:39:12 CDT 2025
