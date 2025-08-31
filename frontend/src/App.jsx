@@ -574,12 +574,59 @@ function TeamPage() {
   async function loadTeamData() {
     setBusy(true)
     try {
-      const res = await fetch(`${API_BASE}/team/${year}/${encodeURIComponent(team)}`)
-      if (!res.ok) {
-        throw new Error(`Failed to load team data: ${res.status}`)
+      const teamData = {
+        year: parseInt(year),
+        team: team,
+        meta: null,
+        recruits: [],
+        rerank_meta: null,
+        rerank_players: []
       }
-      const data = await res.json()
-      setTeamData(data)
+
+      // Load class meta
+      try {
+        const metaRes = await fetch(`${API_BASE}/class/meta?year=${year}&team=${encodeURIComponent(team)}`)
+        if (metaRes.ok) {
+          teamData.meta = await metaRes.json()
+        }
+      } catch (error) {
+        console.log('No class meta available')
+      }
+
+      // Load recruits
+      try {
+        const recruitsRes = await fetch(`${API_BASE}/recruits/${year}/${encodeURIComponent(team)}`)
+        if (recruitsRes.ok) {
+          teamData.recruits = await recruitsRes.json()
+        }
+      } catch (error) {
+        console.log('No recruits available')
+      }
+
+      // Load rerank meta
+      try {
+        const rerankMetaRes = await fetch(`${API_BASE}/rerank/meta?year=${year}&team=${encodeURIComponent(team)}`)
+        if (rerankMetaRes.ok) {
+          teamData.rerank_meta = await rerankMetaRes.json()
+          
+          // Load rerank players if we have rerank data
+          if (teamData.rerank_meta.class_id) {
+            try {
+              const playersRes = await fetch(`${API_BASE}/admin/classes/${teamData.rerank_meta.class_id}`)
+              if (playersRes.ok) {
+                const classData = await playersRes.json()
+                teamData.rerank_players = (classData.players || []).sort((a, b) => b.points - a.points)
+              }
+            } catch (error) {
+              console.log('No rerank players available')
+            }
+          }
+        }
+      } catch (error) {
+        console.log('No rerank meta available')
+      }
+
+      setTeamData(teamData)
     } catch (error) {
       alert(`Error loading team data: ${error.message}`)
     } finally {
