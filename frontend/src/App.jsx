@@ -132,12 +132,29 @@ function AuthPage({ onToken }) {
   return (
     <div className="card">
       <h2>Login</h2>
+      <p style={{ marginBottom: '16px', color: '#666' }}>
+        Use these demo credentials to access ReRank features:
+      </p>
+      <div style={{ 
+        backgroundColor: '#f8f9fa', 
+        padding: '12px', 
+        borderRadius: '6px', 
+        marginBottom: '16px',
+        border: '1px solid #dee2e6'
+      }}>
+        <p style={{ margin: '4px 0', fontFamily: 'monospace' }}>
+          <strong>Email:</strong> demo@example.com
+        </p>
+        <p style={{ margin: '4px 0', fontFamily: 'monospace' }}>
+          <strong>Password:</strong> demo1234
+        </p>
+      </div>
       <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="email" />
       <input value={password} onChange={e=>setPassword(e.target.value)} placeholder="password" type="password" />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button onClick={()=>submit('register')}>Register</button>
         <button onClick={()=>submit('login')}>Login</button>
-        <span>{msg}</span>
+        <span style={{ marginLeft: '8px', color: msg === 'Login successful!' ? '#28a745' : '#dc3545' }}>{msg}</span>
       </div>
     </div>
   )
@@ -924,7 +941,36 @@ function TeamPage() {
             color: '#000000'
           }}>
             <h3>No data available for {team} in {year}</h3>
-            <p>This team hasn't been imported or reranked yet.</p>
+            <p>This team hasn't been imported from CFBD yet.</p>
+            <div style={{ 
+              backgroundColor: '#f8f9fa', 
+              padding: '16px', 
+              borderRadius: '8px', 
+              margin: '20px 0',
+              border: '1px solid #dee2e6'
+            }}>
+              <h4 style={{ marginTop: 0, color: teamColors.primary }}>Teams with Data Available:</h4>
+              <p style={{ marginBottom: '12px' }}>These teams have been imported and can be viewed:</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                {['Texas', 'Oklahoma State', 'Alabama', 'Georgia', 'Air Force'].map(teamName => (
+                  <a 
+                    key={teamName}
+                    href={`#/team/2002/${teamName}`}
+                    style={{
+                      backgroundColor: teamColors.primary,
+                      color: teamColors.accent,
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      textDecoration: 'none',
+                      fontSize: '14px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {teamName}
+                  </a>
+                ))}
+              </div>
+            </div>
             <div style={{ marginTop: '20px' }}>
               <a 
                 href="#/auth" 
