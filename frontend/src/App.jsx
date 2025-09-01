@@ -261,6 +261,7 @@ function RerankPage() {
   const [rerank, setRerank] = useState(null)
   const [rerankPlayers, setRerankPlayers] = useState([])
   const [message, setMessage] = useState('')
+  const [hasUserReranks, setHasUserReranks] = useState(false)
   
   // New recruit form state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -337,9 +338,24 @@ function RerankPage() {
           setRerankPlayers((classData.players || []).sort((a, b) => b.points - a.points))
         }
       }
+      
+      // Check for user-created reranks
+      await checkUserReranks()
     } else {
       setRerank(null)
       setRerankPlayers([])
+    }
+  }
+
+  async function checkUserReranks() {
+    try {
+      const statusRes = await fetch(`${API_BASE}/rerank/protection-status/${year}/${encodeURIComponent(team)}`)
+      if (statusRes.ok) {
+        const data = await statusRes.json()
+        setHasUserReranks(data.has_user_reranks)
+      }
+    } catch (error) {
+      console.error('Error checking user reranks:', error)
     }
   }
 
@@ -603,6 +619,29 @@ function RerankPage() {
           color: message.includes('Error') ? '#d32f2f' : '#2e7d32'
         }}>
           {message}
+        </div>
+      )}
+
+      {hasUserReranks && (
+        <div style={{ 
+          padding: '1rem', 
+          marginBottom: '1rem', 
+          borderRadius: '4px',
+          backgroundColor: '#fff3cd',
+          border: '1px solid #ffeaa7',
+          color: '#856404'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <strong>User Work Detected</strong>
+          </div>
+          <p style={{ margin: '0 0 8px 0' }}>
+            This team has user-created reranks that will be preserved. When you import new data or recalculate, 
+            your existing work will NOT be overwritten.
+          </p>
+          <p style={{ margin: 0, fontSize: '14px', fontStyle: 'italic' }}>
+            Both user-created and auto-generated reranks will coexist, with user work taking priority.
+          </p>
         </div>
       )}
 
@@ -904,6 +943,7 @@ function RerankPage() {
           )}
         </div>
       )}
+
     </div>
   )
 }

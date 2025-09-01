@@ -150,6 +150,8 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     token = create_access_token({"sub": str(user.id), "email": user.email})
     return TokenResponse(access_token=token)
 
+
+
 @app.get("/api/rerank/{year}/{team}")
 async def rerank_class(year: int, team: str):
     team = normalize_team_name(team)
@@ -183,7 +185,13 @@ async def save_rerank_class(
         total += points
     avg = round(total / max(1, len(players_clean)), 2)
 
-    rerank = models.RerankClass(year=year, team=payload.team.strip(), total_points=total, avg_points=avg, created_by=(user.id if user else None))
+    rerank = models.RerankClass(
+        year=year, 
+        team=payload.team.strip(), 
+        total_points=total, 
+        avg_points=avg, 
+        created_by=(user.id if user else None)
+    )
     db.add(rerank)
     db.commit()
     db.refresh(rerank)
@@ -277,15 +285,39 @@ async def recalc_rerank_from_recruits(year: int, team: str, db: Session = Depend
     
     avg = round(total_points / max(1, len(all_players)), 2)
 
-    # Enforce single snapshot per team/year: delete previous snapshots and players
-    old_classes = db.query(models.RerankClass).filter(models.RerankClass.year == year, models.RerankClass.team == team).all()
-    for oc in old_classes:
+    # Check if there's existing user-created work that should be preserved
+    existing_user_classes = db.query(models.RerankClass).filter(
+        models.RerankClass.year == year, 
+        models.RerankClass.team == team,
+        models.RerankClass.created_by.isnot(None)  # User-created reranks
+    ).all()
+    
+    # If there are user-created reranks, throw an error to prevent overwriting
+    if existing_user_classes:
+        raise HTTPException(
+            status_code=409, 
+            detail=f"Cannot auto-recalculate: {team} {year} has user-created reranks that would be overwritten. User work is protected."
+        )
+    
+    # No user work to preserve, safe to delete old auto-generated classes
+    old_auto_classes = db.query(models.RerankClass).filter(
+        models.RerankClass.year == year, 
+        models.RerankClass.team == team,
+        models.RerankClass.created_by.is_(None)  # Auto-generated classes only
+    ).all()
+    for oc in old_auto_classes:
         db.query(models.RerankPlayer).filter(models.RerankPlayer.class_id == oc.id).delete()
         db.delete(oc)
     db.commit()
-
-    # Persist new class snapshot
-    rc = models.RerankClass(year=year, team=team, total_points=total_points, avg_points=avg)
+    
+    rc = models.RerankClass(
+        year=year, 
+        team=team, 
+        total_points=total_points, 
+        avg_points=avg,
+        created_by=None  # Auto-generated
+    )
+    
     db.add(rc)
     db.commit()
     db.refresh(rc)
@@ -314,12 +346,15 @@ async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
         "Notre Dame", "UConn", "UMass", "Army", "Navy", "Air Force"
     ]
     
-    # Get teams with rerank data
+    # Get teams with rerank data (prefer user-created over auto-generated)
     classes = db.query(models.RerankClass).filter(models.RerankClass.year == year).order_by(models.RerankClass.created_at.desc()).all()
     latest_by_team: Dict[str, models.RerankClass] = {}
     for rc in classes:
         key = normalize_team_name(rc.team)
         if key not in latest_by_team:
+            latest_by_team[key] = rc
+        elif rc.created_by is not None and latest_by_team[key].created_by is None:
+            # Prefer user-created over auto-generated
             latest_by_team[key] = rc
     
     # Build rows for all teams
@@ -368,13 +403,23 @@ async def rerank_leaderboard(year: int, db: Session = Depends(get_db)):
 @app.get("/api/rerank/meta")
 async def rerank_meta(year: int, team: str, db: Session = Depends(get_db)):
     team = normalize_team_name(team)
-    # latest snapshot for team
-    rc = (
+    # latest snapshot for team (prefer user-created)
+    user_created = (
         db.query(models.RerankClass)
-        .filter(models.RerankClass.year == year, models.RerankClass.team == team)
+        .filter(models.RerankClass.year == year, models.RerankClass.team == team, models.RerankClass.created_by.isnot(None))
         .order_by(models.RerankClass.created_at.desc())
         .first()
     )
+    
+    if user_created:
+        rc = user_created
+    else:
+        rc = (
+            db.query(models.RerankClass)
+            .filter(models.RerankClass.year == year, models.RerankClass.team == team)
+            .order_by(models.RerankClass.created_at.desc())
+            .first()
+        )
     if not rc:
         raise HTTPException(status_code=404, detail="No rerank snapshot for team/year")
     commits = db.query(models.RerankPlayer).filter(models.RerankPlayer.class_id == rc.id).count()
@@ -811,6 +856,24 @@ async def find_and_build(year: int, team: str, db: Session = Depends(get_db)):
     _ = await recalc_rerank_from_recruits(year, team, db)  # type: ignore
     return {"ok": True, "message": "Imported (teams+players) and recalculated"}
 
+@app.get("/api/rerank/protection-status/{year}/{team}")
+async def get_protection_status(year: int, team: str, db: Session = Depends(get_db)):
+    """Check if there are user-created reranks that would be protected"""
+    team = normalize_team_name(team)
+    user_classes = db.query(models.RerankClass).filter(
+        models.RerankClass.year == year,
+        models.RerankClass.team == team,
+        models.RerankClass.created_by.isnot(None)
+    ).all()
+    
+    return {
+        "year": year,
+        "team": team,
+        "has_user_reranks": len(user_classes) > 0,
+        "user_rerank_count": len(user_classes),
+        "latest_user_rerank": user_classes[0].created_at.isoformat() if user_classes else None
+    }
+
 # Admin endpoints (MVP: no strict RBAC; if token present, allow manage own; otherwise allow read-only)
 @app.get("/api/admin/classes")
 async def list_classes(db: Session = Depends(get_db)):
@@ -822,6 +885,7 @@ async def list_classes(db: Session = Depends(get_db)):
         "total_points": r.total_points,
         "avg_points": r.avg_points,
         "created_at": r.created_at.isoformat(),
+        "created_by": r.created_by,
     } for r in rows]
 
 @app.get("/api/admin/classes/{class_id}")
@@ -836,6 +900,7 @@ async def get_class(class_id: int, db: Session = Depends(get_db)):
         "team": rc.team,
         "total_points": rc.total_points,
         "avg_points": rc.avg_points,
+        "created_by": rc.created_by,
         "players": [{"id": p.id, "name": p.name, "points": p.points, "note": p.note} for p in players],
     }
 
