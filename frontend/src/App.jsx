@@ -64,7 +64,7 @@ function useAuth() {
 }
 
 function Nav() {
-  const { isAuthed } = useAuth()
+  const { isAuthed, userInfo } = useAuth()
   
   return (
     <nav style={{ 
@@ -96,7 +96,7 @@ function Nav() {
       >
         🏆 Leaderboard
       </a>
-      {isAuthed && (
+      {isAuthed && userInfo?.isAdmin && (
         <a 
           href="#/rerank" 
           style={{ 
@@ -114,7 +114,7 @@ function Nav() {
             e.target.style.backgroundColor = 'transparent'
           }}
         >
-          📊 ReRank
+          📊 ReRank (Admin)
         </a>
       )}
               {isAuthed && (
@@ -223,9 +223,9 @@ function AuthPage({ onToken }) {
   
   return (
     <div className="card">
-      <h2>Login</h2>
+      <h2>Login / Register</h2>
       <p style={{ marginBottom: '16px', color: '#666' }}>
-        Use these demo credentials to access ReRank features:
+        Create an account to post messages with your name, or login as admin to access ReRank features.
       </p>
       <div style={{ 
         backgroundColor: '#f8f9fa', 
@@ -235,10 +235,10 @@ function AuthPage({ onToken }) {
         border: '1px solid #dee2e6'
       }}>
         <p style={{ margin: '4px 0', fontFamily: 'monospace' }}>
-          <strong>Email:</strong> demo@example.com
+          <strong>Admin Demo:</strong> demo@example.com / demo1234
         </p>
-        <p style={{ margin: '4px 0', fontFamily: 'monospace' }}>
-          <strong>Password:</strong> demo1234
+        <p style={{ margin: '4px 0', fontSize: '12px', color: '#666' }}>
+          Regular users can post messages. Admins can also use ReRank features.
         </p>
       </div>
       <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="email" />
@@ -253,7 +253,7 @@ function AuthPage({ onToken }) {
 }
 
 function RerankPage() {
-  const { isAuthed } = useAuth()
+  const { isAuthed, userInfo } = useAuth()
   const [year, setYear] = useState('2002')
   const [team, setTeam] = useState('Oklahoma State')
   const [busy, setBusy] = useState(false)
@@ -302,6 +302,56 @@ function RerankPage() {
         >
           Login to Continue
         </a>
+      </div>
+    )
+  }
+
+  if (!userInfo?.isAdmin) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '40px',
+        backgroundColor: '#fff3cd',
+        borderRadius: '12px',
+        border: '2px solid #ffeaa7'
+      }}>
+        <h2 style={{ color: '#856404', marginBottom: '20px' }}>🔒 Admin Access Required</h2>
+        <p style={{ color: '#856404', marginBottom: '20px' }}>
+          The ReRank functionality is restricted to administrators only.
+        </p>
+        <p style={{ color: '#856404', marginBottom: '20px' }}>
+          You can still view team data and post messages on the message boards!
+        </p>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <a 
+            href="#/leaderboard" 
+            style={{
+              backgroundColor: '#007bff',
+              color: 'white',
+              padding: '12px 24px',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontWeight: 'bold',
+              display: 'inline-block'
+            }}
+          >
+            View Leaderboard
+          </a>
+          <a 
+            href="#/auth" 
+            style={{
+              backgroundColor: '#28a745',
+              color: 'white',
+              padding: '12px 24px',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontWeight: 'bold',
+              display: 'inline-block'
+            }}
+          >
+            Login as Admin
+          </a>
+        </div>
       </div>
     )
   }
@@ -1506,22 +1556,24 @@ function TeamPage() {
                   marginRight: '10px'
                 }}
               >
-                Login to ReRank
+                Login to Post Messages
               </a>
-              <a 
-                href="#/rerank" 
-                style={{
-                  backgroundColor: '#28a745',
-                  color: 'white',
-                  padding: '12px 24px',
-                  borderRadius: '6px',
-                  textDecoration: 'none',
-                  fontWeight: 'bold',
-                  display: 'inline-block'
-                }}
-              >
-                Go to ReRank Page
-              </a>
+              {userInfo?.isAdmin && (
+                <a 
+                  href="#/rerank" 
+                  style={{
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    padding: '12px 24px',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    fontWeight: 'bold',
+                    display: 'inline-block'
+                  }}
+                >
+                  Go to ReRank Page
+                </a>
+              )}
             </div>
           </div>
         )}
@@ -1536,9 +1588,14 @@ function TeamPage() {
             marginTop: '20px',
             border: `1px solid ${teamColors.primaryLight}`
           }}>
-            <h4 style={{ color: teamColors.primary, marginBottom: '10px' }}>Ready to ReRank?</h4>
+            <h4 style={{ color: teamColors.primary, marginBottom: '10px' }}>
+              {userInfo?.isAdmin ? 'Ready to ReRank?' : 'Team Data Available'}
+            </h4>
             <p style={{ color: '#000000', marginBottom: '15px' }}>
-              This team has original recruiting data but hasn't been reranked yet.
+              {userInfo?.isAdmin 
+                ? 'This team has original recruiting data but hasn\'t been reranked yet.'
+                : 'This team has original recruiting data available for viewing.'
+              }
             </p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <a 
@@ -1553,22 +1610,24 @@ function TeamPage() {
                   fontSize: '14px'
                 }}
               >
-                Login to ReRank
+                {userInfo?.isAdmin ? 'Login to ReRank' : 'Login to Post Messages'}
               </a>
-              <a 
-                href="#/rerank" 
-                style={{
-                  backgroundColor: '#28a745',
-                  color: 'white',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  textDecoration: 'none',
-                  fontWeight: 'bold',
-                  fontSize: '14px'
-                }}
-              >
-                Go to ReRank Page
-              </a>
+              {userInfo?.isAdmin && (
+                <a 
+                  href="#/rerank" 
+                  style={{
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    fontWeight: 'bold',
+                    fontSize: '14px'
+                  }}
+                >
+                  Go to ReRank Page
+                </a>
+              )}
             </div>
           </div>
         )}
@@ -1587,7 +1646,7 @@ function TeamPage() {
           
           {/* Post new message */}
           <div style={{ marginBottom: '20px' }}>
-            {userInfo && (
+            {userInfo ? (
               <div style={{ 
                 marginBottom: '8px', 
                 padding: '8px 12px', 
@@ -1597,6 +1656,23 @@ function TeamPage() {
                 color: teamColors.primaryDark
               }}>
                 Posting as: <strong>{userInfo.email}</strong>
+                {userInfo.isAdmin && <span style={{ marginLeft: '8px', color: '#ff6b35', fontWeight: 'bold' }}>👑 Admin</span>}
+              </div>
+            ) : (
+              <div style={{ 
+                marginBottom: '12px', 
+                padding: '12px', 
+                backgroundColor: '#fff3cd', 
+                borderRadius: '6px',
+                border: '1px solid #ffeaa7',
+                fontSize: '14px',
+                color: '#856404'
+              }}>
+                <strong>💡 Want to post with your name?</strong> 
+                <a href="#/auth" style={{ marginLeft: '8px', color: teamColors.primary, fontWeight: 'bold' }}>
+                  Login or Register
+                </a> 
+                to post with your email instead of "Anonymous"
               </div>
             )}
             <textarea
@@ -1626,22 +1702,41 @@ function TeamPage() {
               <small style={{ color: '#666' }}>
                 Press Ctrl+Enter to post
               </small>
-              <button
-                onClick={postMessage}
-                disabled={messageBusy || !newMessage.trim()}
-                style={{
-                  backgroundColor: teamColors.primary,
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  cursor: messageBusy || !newMessage.trim() ? 'not-allowed' : 'pointer',
-                  opacity: messageBusy || !newMessage.trim() ? 0.6 : 1,
-                  fontWeight: 'bold'
-                }}
-              >
-                {messageBusy ? 'Posting...' : 'Post Message'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {!userInfo && (
+                  <a 
+                    href="#/auth"
+                    style={{
+                      backgroundColor: teamColors.primary,
+                      color: 'white',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      textDecoration: 'none',
+                      fontSize: '12px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    Login
+                  </a>
+                )}
+                <button
+                  onClick={postMessage}
+                  disabled={messageBusy || !newMessage.trim()}
+                  style={{
+                    backgroundColor: teamColors.primary,
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    cursor: messageBusy || !newMessage.trim() ? 'not-allowed' : 'pointer',
+                    opacity: messageBusy || !newMessage.trim() ? 0.6 : 1,
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {messageBusy ? 'Posting...' : 'Post Message'}
+                </button>
+              </div>
             </div>
           </div>
 
