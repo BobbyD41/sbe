@@ -36,7 +36,8 @@ function useAuth() {
       const payload = JSON.parse(atob(token.split('.')[1]))
       return {
         id: payload.sub,
-        email: payload.email
+        email: payload.email,
+        isAdmin: payload.is_admin || false
       }
     } catch (error) {
       console.error('Error decoding token:', error)
@@ -1165,6 +1166,30 @@ function TeamPage() {
     }
   }
 
+  async function adminDeleteMessage(messageId) {
+    if (!confirm('Are you sure you want to delete this message as an admin? This action cannot be undone.')) return
+    
+    try {
+      const response = await fetch(`${API_BASE}/admin/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          ...headers
+        }
+      })
+      
+      if (response.ok) {
+        setMessages(prev => prev.filter(m => m.id !== messageId))
+        alert('Message deleted successfully by admin')
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to delete message: ${errorData.detail || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting message as admin:', error)
+      alert('Error deleting message as admin')
+    }
+  }
+
   async function loadTeamData() {
     setBusy(true)
     try {
@@ -1653,7 +1678,7 @@ function TeamPage() {
                           {new Date(message.created_at).toLocaleString()}
                         </small>
                       </div>
-                      {userInfo && message.user_email === userInfo.email && (
+                      {(userInfo && message.user_email === userInfo.email) && (
                         <button
                           onClick={() => deleteMessage(message.id)}
                           style={{
@@ -1663,10 +1688,28 @@ function TeamPage() {
                             padding: '4px 8px',
                             borderRadius: '4px',
                             cursor: 'pointer',
-                            fontSize: '12px'
+                            fontSize: '12px',
+                            marginRight: '4px'
                           }}
                         >
                           Delete
+                        </button>
+                      )}
+                      {userInfo && userInfo.isAdmin && (
+                        <button
+                          onClick={() => adminDeleteMessage(message.id)}
+                          style={{
+                            backgroundColor: '#ff6b35',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                          title="Admin: Delete any message"
+                        >
+                          Admin Delete
                         </button>
                       )}
                     </div>

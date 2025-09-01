@@ -139,7 +139,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    token = create_access_token({"sub": str(user.id), "email": user.email})
+    token = create_access_token({"sub": str(user.id), "email": user.email, "is_admin": bool(user.is_admin)})
     return TokenResponse(access_token=token)
 
 @app.post("/api/auth/login", response_model=TokenResponse)
@@ -147,7 +147,7 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.email == req.email).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": str(user.id), "email": user.email})
+    token = create_access_token({"sub": str(user.id), "email": user.email, "is_admin": bool(user.is_admin)})
     return TokenResponse(access_token=token)
 
 
@@ -990,6 +990,30 @@ async def get_messages(year: int, team: str, db: Session = Depends(get_db)):
         "created_at": m.created_at.isoformat()
     } for m in messages]
 
+@app.get("/api/admin/messages")
+async def admin_get_messages(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Admin endpoint to get all messages across all teams"""
+    current_user = get_current_user_db(db, authorization)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    messages = db.query(models.Message).order_by(models.Message.created_at.desc()).limit(100).all()
+    
+    return [{
+        "id": m.id,
+        "year": m.year,
+        "team": m.team,
+        "user_email": m.user_email,
+        "content": m.content,
+        "created_at": m.created_at.isoformat()
+    } for m in messages]
+
 @app.post("/api/messages/{year}/{team}")
 async def create_message(
     year: int, 
@@ -1041,13 +1065,35 @@ async def delete_message(
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
     
-    # Allow deletion if user is the author
-    if message.user_id != current_user.id:
+    # Allow deletion if user is the author OR if user is admin
+    if message.user_id != current_user.id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this message")
     
     db.delete(message)
     db.commit()
     return {"ok": True}
+
+@app.delete("/api/admin/messages/{message_id}")
+async def admin_delete_message(
+    message_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Admin endpoint to delete any message"""
+    current_user = get_current_user_db(db, authorization)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    message = db.get(models.Message, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    db.delete(message)
+    db.commit()
+    return {"ok": True, "deleted_by": current_user.email}
 
 # Static dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "static")
