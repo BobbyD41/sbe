@@ -1287,12 +1287,13 @@ function TeamPage() {
             onClick={() => window.location.hash = '#/leaderboard'}
             style={{
               backgroundColor: teamColors.primary,
-              color: teamColors.accent,
+              color: 'white',
               border: 'none',
               padding: '8px 16px',
               borderRadius: '6px',
               cursor: 'pointer',
-              marginRight: '16px'
+              marginRight: '16px',
+              fontWeight: 'bold'
             }}
           >
             ← Back to Leaderboard
@@ -1338,7 +1339,7 @@ function TeamPage() {
               boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
             }}>
               <thead>
-                <tr style={{ backgroundColor: teamColors.primary, color: teamColors.accent }}>
+                <tr style={{ backgroundColor: teamColors.primary, color: 'white' }}>
                   <th style={{ padding: '12px', textAlign: 'left' }}>#</th>
                   <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
                   <th style={{ padding: '12px', textAlign: 'left' }}>Pos</th>
@@ -1359,7 +1360,7 @@ function TeamPage() {
                     <td style={{ padding: '12px' }}>
                       <span style={{
                         backgroundColor: r.outcome ? teamColors.primary : '#ccc',
-                        color: r.outcome ? teamColors.accent : '#666',
+                        color: r.outcome ? 'white' : '#666',
                         padding: '4px 8px',
                         borderRadius: '4px',
                         fontSize: '12px',
@@ -1403,7 +1404,7 @@ function TeamPage() {
                   boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                 }}>
                   <thead>
-                    <tr style={{ backgroundColor: teamColors.primary, color: teamColors.accent }}>
+                    <tr style={{ backgroundColor: teamColors.primary, color: 'white' }}>
                       <th style={{ padding: '12px', textAlign: 'left' }}>Rank</th>
                       <th style={{ padding: '12px', textAlign: 'left' }}>Player</th>
                       <th style={{ padding: '12px', textAlign: 'left' }}>Points</th>
@@ -1453,7 +1454,7 @@ function TeamPage() {
                     href={`#/team/2002/${teamName}`}
                     style={{
                       backgroundColor: teamColors.primary,
-                      color: teamColors.accent,
+                      color: 'white',
                       padding: '6px 12px',
                       borderRadius: '4px',
                       textDecoration: 'none',
@@ -1471,7 +1472,7 @@ function TeamPage() {
                 href="#/auth" 
                 style={{
                   backgroundColor: teamColors.primary,
-                  color: teamColors.accent,
+                  color: 'white',
                   padding: '12px 24px',
                   borderRadius: '6px',
                   textDecoration: 'none',
@@ -1519,7 +1520,7 @@ function TeamPage() {
                 href="#/auth" 
                 style={{
                   backgroundColor: teamColors.primary,
-                  color: teamColors.accent,
+                  color: 'white',
                   padding: '8px 16px',
                   borderRadius: '6px',
                   textDecoration: 'none',
@@ -1605,7 +1606,7 @@ function TeamPage() {
                 disabled={messageBusy || !newMessage.trim()}
                 style={{
                   backgroundColor: teamColors.primary,
-                  color: teamColors.accent,
+                  color: 'white',
                   border: 'none',
                   padding: '8px 16px',
                   borderRadius: '6px',
