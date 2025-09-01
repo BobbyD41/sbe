@@ -896,6 +896,94 @@ async def cfbd_status():
         return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}
 
 
+# Message Board API endpoints
+class MessageRequest(BaseModel):
+    content: str
+
+class MessageResponse(BaseModel):
+    id: int
+    year: int
+    team: str
+    user_email: str
+    content: str
+    created_at: str
+
+@app.get("/api/messages/{year}/{team}")
+async def get_messages(year: int, team: str, db: Session = Depends(get_db)):
+    """Get all messages for a specific team and year"""
+    messages = db.query(models.Message).filter(
+        models.Message.year == year,
+        models.Message.team == team
+    ).order_by(models.Message.created_at.desc()).all()
+    
+    return [{
+        "id": m.id,
+        "year": m.year,
+        "team": m.team,
+        "user_email": m.user_email,
+        "content": m.content,
+        "created_at": m.created_at.isoformat()
+    } for m in messages]
+
+@app.post("/api/messages/{year}/{team}")
+async def create_message(
+    year: int, 
+    team: str, 
+    message: MessageRequest, 
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Create a new message for a team"""
+    current_user = get_current_user_db(db, authorization)
+    
+    # For now, allow anonymous messages but prefer authenticated users
+    user_email = current_user.email if current_user else "Anonymous"
+    user_id = current_user.id if current_user else None
+    
+    new_message = models.Message(
+        year=year,
+        team=team,
+        user_id=user_id,
+        user_email=user_email,
+        content=message.content
+    )
+    
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
+    
+    return {
+        "id": new_message.id,
+        "year": new_message.year,
+        "team": new_message.team,
+        "user_email": new_message.user_email,
+        "content": new_message.content,
+        "created_at": new_message.created_at.isoformat()
+    }
+
+@app.delete("/api/messages/{message_id}")
+async def delete_message(
+    message_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Delete a message (only by the author or admin)"""
+    current_user = get_current_user_db(db, authorization)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    message = db.get(models.Message, message_id)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    
+    # Allow deletion if user is the author
+    if message.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this message")
+    
+    db.delete(message)
+    db.commit()
+    return {"ok": True}
+
 # Static dashboard
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.isdir(static_dir):

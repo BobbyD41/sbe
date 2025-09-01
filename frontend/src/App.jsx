@@ -28,10 +28,26 @@ const OUTCOME_POINTS = {
 function useAuth() {
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const isAuthed = !!token
+  
+  // Decode JWT token to get user info
+  const userInfo = useMemo(() => {
+    if (!token) return null
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      return {
+        id: payload.sub,
+        email: payload.email
+      }
+    } catch (error) {
+      console.error('Error decoding token:', error)
+      return null
+    }
+  }, [token])
+  
   const headers = useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token])
   
   // Debug logging
-  console.log('useAuth state:', { token: token ? 'present' : 'missing', isAuthed, hasHeaders: !!Object.keys(headers).length })
+  console.log('useAuth state:', { token: token ? 'present' : 'missing', isAuthed, hasHeaders: !!Object.keys(headers).length, userInfo })
   
   const setTokenWithStorage = (newToken) => {
     console.log('Setting token:', newToken ? 'present' : 'missing')
@@ -43,7 +59,7 @@ function useAuth() {
     setToken(newToken)
   }
   
-  return { token, setToken: setTokenWithStorage, isAuthed, headers }
+  return { token, setToken: setTokenWithStorage, isAuthed, headers, userInfo }
 }
 
 function Nav() {
@@ -1023,6 +1039,10 @@ function TeamPage() {
   const [team, setTeam] = useState('')
   const [teamData, setTeamData] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState('')
+  const [messageBusy, setMessageBusy] = useState(false)
+  const { headers, userInfo } = useAuth()
 
   useEffect(() => {
     const hash = window.location.hash
@@ -1037,8 +1057,73 @@ function TeamPage() {
   useEffect(() => {
     if (year && team) {
       loadTeamData()
+      loadMessages()
     }
   }, [year, team])
+
+  async function loadMessages() {
+    try {
+      const messagesUrl = `${API_BASE}/messages/${year}/${encodeURIComponent(team)}`
+      const messagesRes = await fetch(messagesUrl)
+      if (messagesRes.ok) {
+        const messagesData = await messagesRes.json()
+        setMessages(messagesData)
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error)
+    }
+  }
+
+  async function postMessage() {
+    if (!newMessage.trim()) return
+    
+    setMessageBusy(true)
+    try {
+      const response = await fetch(`${API_BASE}/messages/${year}/${encodeURIComponent(team)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers
+        },
+        body: JSON.stringify({ content: newMessage.trim() })
+      })
+      
+      if (response.ok) {
+        const postedMessage = await response.json()
+        setMessages(prev => [postedMessage, ...prev])
+        setNewMessage('')
+      } else {
+        alert('Failed to post message')
+      }
+    } catch (error) {
+      console.error('Error posting message:', error)
+      alert('Error posting message')
+    } finally {
+      setMessageBusy(false)
+    }
+  }
+
+  async function deleteMessage(messageId) {
+    if (!confirm('Are you sure you want to delete this message?')) return
+    
+    try {
+      const response = await fetch(`${API_BASE}/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          ...headers
+        }
+      })
+      
+      if (response.ok) {
+        setMessages(prev => prev.filter(m => m.id !== messageId))
+      } else {
+        alert('Failed to delete message')
+      }
+    } catch (error) {
+      console.error('Error deleting message:', error)
+      alert('Error deleting message')
+    }
+  }
 
   async function loadTeamData() {
     setBusy(true)
@@ -1421,6 +1506,142 @@ function TeamPage() {
             </div>
           </div>
         )}
+
+        {/* Message Board */}
+        <div style={{ 
+          backgroundColor: teamColors.primaryBg,
+          padding: '20px',
+          borderRadius: '8px',
+          marginTop: '20px',
+          border: `1px solid ${teamColors.primaryLight}`
+        }}>
+          <h3 style={{ color: teamColors.primary, marginTop: 0, marginBottom: '16px' }}>
+            💬 Message Board
+          </h3>
+          
+          {/* Post new message */}
+          <div style={{ marginBottom: '20px' }}>
+            {userInfo && (
+              <div style={{ 
+                marginBottom: '8px', 
+                padding: '8px 12px', 
+                backgroundColor: teamColors.primaryLight, 
+                borderRadius: '4px',
+                fontSize: '14px',
+                color: teamColors.primaryDark
+              }}>
+                Posting as: <strong>{userInfo.email}</strong>
+              </div>
+            )}
+            <textarea
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={userInfo ? 
+                `Share your thoughts about ${team}'s ${year} recruiting class...` : 
+                "Share your thoughts about this team's recruiting class... (You'll post as Anonymous)"
+              }
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '12px',
+                borderRadius: '6px',
+                border: `2px solid ${teamColors.primaryLight}`,
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                resize: 'vertical'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  postMessage()
+                }
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+              <small style={{ color: '#666' }}>
+                Press Ctrl+Enter to post
+              </small>
+              <button
+                onClick={postMessage}
+                disabled={messageBusy || !newMessage.trim()}
+                style={{
+                  backgroundColor: teamColors.primary,
+                  color: teamColors.accent,
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  cursor: messageBusy || !newMessage.trim() ? 'not-allowed' : 'pointer',
+                  opacity: messageBusy || !newMessage.trim() ? 0.6 : 1,
+                  fontWeight: 'bold'
+                }}
+              >
+                {messageBusy ? 'Posting...' : 'Post Message'}
+              </button>
+            </div>
+          </div>
+
+          {/* Messages list */}
+          <div>
+            {messages.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '40px',
+                color: '#666',
+                fontStyle: 'italic'
+              }}>
+                No messages yet. Be the first to share your thoughts!
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    style={{
+                      backgroundColor: 'white',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${teamColors.primaryLight}`,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <strong style={{ color: teamColors.primary }}>
+                          {message.user_email}
+                        </strong>
+                        <small style={{ color: '#666', marginLeft: '8px' }}>
+                          {new Date(message.created_at).toLocaleString()}
+                        </small>
+                      </div>
+                      {userInfo && message.user_email === userInfo.email && (
+                        <button
+                          onClick={() => deleteMessage(message.id)}
+                          style={{
+                            backgroundColor: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ 
+                      color: '#333',
+                      lineHeight: '1.5',
+                      whiteSpace: 'pre-wrap'
+                    }}>
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
