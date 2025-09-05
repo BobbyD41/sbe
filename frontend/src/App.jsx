@@ -1900,7 +1900,7 @@ function AdminPage({ auth }) {
   async function importCfbd() {
     setBusy(true)
     try {
-      const res = await fetch(`${API_BASE}/import/cfbd/${encodeURIComponent(year)}/${encodeURIComponent(team)}`, { method:'POST' })
+      const res = await fetch(`${API_BASE}/import/cfbd/class?year=${encodeURIComponent(year)}&team=${encodeURIComponent(team)}`, { method:'POST' })
       if (!res.ok) { const t = await res.text(); throw new Error(t) }
       await load()
       alert('Imported from CFBD')
