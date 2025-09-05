@@ -99,7 +99,7 @@ function Nav() {
       >
         🏆 Leaderboard
       </a>
-      {isAuthed && userInfo?.isAdmin && (
+      {isAuthed && (
         <a 
           href="#/rerank" 
           style={{ 
@@ -309,7 +309,7 @@ function RerankPage() {
     )
   }
 
-  if (!userInfo?.isAdmin) {
+  if (!isAuthed) {
     return (
       <div style={{ 
         textAlign: 'center', 
@@ -318,9 +318,9 @@ function RerankPage() {
         borderRadius: '12px',
         border: '2px solid #ffeaa7'
       }}>
-        <h2 style={{ color: '#856404', marginBottom: '20px' }}>🔒 Admin Access Required</h2>
+        <h2 style={{ color: '#856404', marginBottom: '20px' }}>🔒 Authentication Required</h2>
         <p style={{ color: '#856404', marginBottom: '20px' }}>
-          The ReRank functionality is restricted to administrators only.
+          Please login to access the ReRank functionality.
         </p>
         <p style={{ color: '#856404', marginBottom: '20px' }}>
           You can still view team data and post messages on the message boards!
@@ -352,7 +352,7 @@ function RerankPage() {
               display: 'inline-block'
             }}
           >
-            Login as Admin
+            Login
           </a>
         </div>
       </div>
