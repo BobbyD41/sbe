@@ -169,8 +169,8 @@ function Nav() {
 
 function AuthPage({ onToken }) {
   const { isAuthed } = useAuth()
-  const [email, setEmail] = useState('demo@example.com')
-  const [password, setPassword] = useState('demo1234')
+  const [email, setEmail] = useState('admin@stars2stats.com')
+  const [password, setPassword] = useState('admin123')
   const [msg, setMsg] = useState('')
   
   async function submit(path) {
@@ -1966,7 +1966,7 @@ function DebugPage() {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'demo@example.com', password: 'demo1234' })
+        body: JSON.stringify({ email: 'admin@stars2stats.com', password: 'admin123' })
       })
       const data = await res.json()
       setTestResults(prev => ({ ...prev, auth: { status: res.status, data } }))
