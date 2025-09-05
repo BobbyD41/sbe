@@ -5,7 +5,9 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 // Use environment variable if set, otherwise default to /api (like localhost)
 // For production: VITE_API_BASE should be the full URL (e.g., https://web-production-06c29.up.railway.app)
 // For local: VITE_API_BASE should be empty or not set (defaults to /api)
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+const API_BASE = import.meta.env.VITE_API_BASE 
+  ? `${import.meta.env.VITE_API_BASE}/api` 
+  : '/api'
 
 // Debug: Log the API_BASE to console
 console.log('API_BASE:', API_BASE)
