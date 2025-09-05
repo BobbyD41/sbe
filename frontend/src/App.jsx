@@ -9,10 +9,6 @@ const API_BASE = import.meta.env.VITE_API_BASE
   ? `${import.meta.env.VITE_API_BASE}/api` 
   : '/api'
 
-// Debug: Log the API_BASE to console
-console.log('API_BASE:', API_BASE)
-console.log('VITE_API_BASE env var:', import.meta.env.VITE_API_BASE)
-
 
 
 const OUTCOMES = [
