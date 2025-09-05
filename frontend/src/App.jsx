@@ -4,7 +4,7 @@ import { getTeamColors, TEAM_COLORS } from './teamColors'
 
 // Use environment variable if set, otherwise default to /api (like localhost)
 // Ensure it always ends with /api for consistency
-const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '') + '/api'
+const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
 
 
 
