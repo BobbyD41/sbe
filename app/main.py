@@ -443,7 +443,15 @@ async def rerank_meta(year: int, team: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/recruits/outcomes")
-async def update_recruit_outcomes(payload: RecruitOutcomePayload, db: Session = Depends(get_db)):
+async def update_recruit_outcomes(
+    payload: RecruitOutcomePayload, 
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+):
+    # Require authentication
+    user = get_current_user_db(db, authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     changed = 0
     for u in payload.updates:
         row = db.get(models.Recruit, u.id)
