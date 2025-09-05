@@ -968,6 +968,22 @@ async def cfbd_status():
     except Exception as e:
         return {"ok": False, "has_key": True, "reachable": False, "detail": str(e)}
 
+# Temporary endpoint to promote user to admin (for setup only)
+@app.post("/api/admin/promote-user")
+async def promote_user_to_admin(
+    email: str,
+    db: Session = Depends(get_db)
+):
+    """Temporary endpoint to promote a user to admin - for setup only"""
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.is_admin = True
+    db.commit()
+    
+    return {"ok": True, "message": f"User {email} promoted to admin"}
+
 
 # Message Board API endpoints
 class MessageRequest(BaseModel):
